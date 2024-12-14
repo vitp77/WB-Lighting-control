@@ -1,0 +1,419 @@
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "title": "Lightings settings",
+    "description": "Configuration of Lightings settings",
+    "options": {
+        "disable_edit_json": true,
+        "disable_properties": true,
+        "disable_collapse": true
+    },
+    "configFile": {
+        "path": "/mnt/data/etc/wb-lighting-control/wb-lightings-settings.conf",
+        "service": "wb-rules"
+    },
+    "properties": {
+		"location": {
+			"$ref": "#/definitions/locationsSettings",
+            "options": {
+                "disable_edit_json": true,
+                "wb": {
+                    "disable_title": true
+                }
+            }
+		},
+        "controls": {
+            "type": "object",
+            "options": {
+                "hidden": true
+            }
+        }
+    },
+	"required": [
+		"location",
+		"controls"
+		],
+    "definitions": {
+        "masterSettings": {
+            "type": "object",
+            "title": "Master controls",
+            "propertyOrder": 20,
+            "properties": {
+				"masterSwitchUse": {
+					"type": "boolean",
+					"title": "Master switch",
+					"description": "Аllows you to control subordinate light sources",
+					"propertyOrder": 10,
+					"_format": "checkbox"
+				},
+                "masterSwitchControl": {
+                    "type": "string",
+                    "title": "HW switch",
+					"description": "Hardware switch control",
+                    "propertyOrder": 20,
+                    "options": {
+                        "grid_columns": 2,
+                        "dependencies": {
+                            "masterSwitchUse": true
+                        }
+                    },
+                    "watch": {
+                        "channelsControls": "root.controls.channelsControls"
+                    },
+                    "enumSource": [
+                        {
+                            "source": "channelsControls",
+                            "title": "{{item}}",
+                            "value": "{{item}}"
+                        }
+                    ]
+                }
+            },
+			"required": [
+				"masterSwitchUse"
+			],
+            "options": {
+                "disable_collapse": true,
+                "disable_properties": true,
+                "disable_edit_json": true,
+                "wb": {
+                    "disable_title": true
+                }
+            }
+        },
+        "locations": {
+            "headerTemplate": "{{self.name}}",
+            "$ref": "#/definitions/locationsSettings",
+            "options": {
+                "disable_edit_json": true,
+                "wb": {
+                    "disable_title": true
+                }
+            }
+        },
+        "locationsSettings": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "propertyOrder": 10,
+                    "options": {
+                        "hidden": true
+                    }
+                },
+                "name": {
+                    "type": "string",
+                    "title": "Name",
+                    "propertyOrder": 20,
+                    "options": {
+                        "hidden": true,
+                        "grid_columns": 6,
+                        "wb": {
+                            "disable_title": true
+                        }
+                    }
+                },
+                "masterSetting": {
+                    "propertyOrder": 20,
+                    "$ref": "#/definitions/masterSettings"
+                },
+                "showLocations": {
+                    "type": "boolean",
+                    "default": false,
+                    "propertyOrder": 40,
+                    "options": {
+                        "hidden": true
+                    }
+                },
+                "locations": {
+                    "type": "array",
+                    "title": "Sub locations",
+                    "_format": "tabs",
+                    "propertyOrder": 100,
+                    "items": {
+                        "$ref": "#/definitions/locations"
+                    },
+                    "options": {
+                        "disable_collapse": false,
+                        "disable_array_delete": true,
+                        "disable_array_add": true,
+                        "disable_array_reorder": true,
+                        "disable_array_delete_last_row": true,
+                        "disable_array_delete_all_rows": true,
+                        "dependencies": {
+                            "showLocations": true
+                        }
+                    }
+                },
+				"lightingSources":{
+                    "propertyOrder": 200,
+                    "$ref": "#/definitions/lightingSources",
+                    "options": {
+                        "dependencies": {
+                            "showLocations": false
+                        }
+					}
+				},
+				"autoPowerOff": {
+                    "type": "boolean",
+					"title": "Auto power off",
+                    "default": false,
+                    "propertyOrder": 250,
+					"_format": "checkbox",
+                    "options": {
+                        "dependencies": {
+                            "showLocations": false
+                        }
+					}
+				},
+				"powerOffDelay": {
+                    "type": "integer",
+					"title": "Power off delay",
+                    "default": 120,
+                    "propertyOrder": 270,
+                    "options": {
+                        "dependencies": {
+                            "autoPowerOff": true
+                        }
+					}
+				},
+				"illuminance": {
+					"type": "object",
+					"_format": "grid",
+					"title": "Illuminance",
+					"propertyOrder": 280,
+					"properties": {
+						"sensor": {
+							"type": "string",
+							"title": "Illuminance sensor",
+							"propertyOrder": 100,
+							"options": {
+								"grid_columns": 6
+							},
+							"watch": {
+								"illuminanceSensors": "root.controls.illuminanceSensors"
+							},
+							"enumSource": [
+								{
+									"source": "illuminanceSensors",
+									"title": "{{item}}",
+									"value": "{{item}}"
+								}
+							]
+						},
+						"value": {
+							"type": "number",
+							"title": "Value",
+							"default": 100,
+							"propertyOrder": 110,
+							"options": {
+								"grid_columns": 3
+							}
+						}
+					},
+					"options": {
+						"disable_edit_json": true,
+                        "disable_collapse": true,
+						"disable_properties": true,
+						"wb": {
+							"disable_title": true,
+							"disable_panel": true
+						},
+						"dependencies": {
+							"autoPowerOff": true
+						}
+					},
+				},
+                "lightingControls": {
+                    "propertyOrder": 300,
+                    "$ref": "#/definitions/lightingControls",
+                    "options": {
+                        "dependencies": {
+                            "autoPowerOff": true
+                        }
+					}
+                }
+            },
+			"required": [
+				"id",
+				"name",
+				"masterSetting",
+				"showLocations"
+			]
+        },
+        "lightingSources": {
+            "_format": "table",
+            "items": {
+                "$ref": "#/definitions/lightingSource"
+            },
+            "options": {
+                "grid_columns": 12,
+                "array_controls_top": true,
+                "disable_array_delete_last_row": true,
+                "disable_array_reorder": true,
+                "disable_collapse": true,
+                "enable_array_copy": false,
+                "wb": {
+                    "disable_panel": true,
+					"disable_array_item_panel" : true,
+					"disable_title" : true
+                }
+            },
+            "propertyOrder": 200,
+            "headerTemplate": "Sources",
+            "type": "array"
+        },
+        "lightingSource": {
+			"title": "Source",
+            "properties": {
+				"source": {
+                    "type": "string",
+                    "title": "Source",
+                    "propertyOrder": 20,
+                    "options": {
+                        "grid_columns": 6
+                    },
+                    "watch": {
+                        "channelsSources": "root.controls.channelsSources"
+                    },
+                    "enumSource": [
+                        {
+                            "source": "channelsSources",
+                            "title": "{{item}}",
+                            "value": "{{item}}"
+                        }
+                    ]
+				},
+                "name": {
+                    "type": "string",
+                    "title": "Name",
+                    "propertyOrder": 30,
+                    "options": {
+                        "grid_columns": 6
+                    }
+                },
+                "brightness": {
+                    "type": "string",
+                    "title": "Brightness",
+                    "propertyOrder": 40,
+					"readonly": true,
+                    "options": {
+                        "grid_columns": 6
+                    }
+                }
+            },
+			"required": [
+				"source",
+				"name",
+				"brightness"
+			]
+        },
+        "lightingControls": {
+            "_format": "table",
+            "items": {
+                "$ref": "#/definitions/lightingControl"
+            },
+            "options": {
+                "grid_columns": 12,
+                "array_controls_top": true,
+                "disable_array_delete_last_row": true,
+                "disable_array_reorder": true,
+                "disable_collapse": true,
+                "enable_array_copy": false,
+                "wb": {
+                    "disable_panel": true,
+					"disable_array_item_panel" : true,
+					"disable_title" : true
+                }
+            },
+            "propertyOrder": 200,
+            "headerTemplate": "Controls",
+            "type": "array"
+        },
+        "lightingControl": {
+			"title": "Control",
+            "properties": {
+                "control": {
+                    "type": "string",
+                    "title": "Control",
+                    "propertyOrder": 20,
+                    "options": {
+                        "grid_columns": 6
+                    },
+                    "watch": {
+                        "channelsControls": "root.controls.channelsControls"
+                    },
+                    "enumSource": [
+                        {
+                            "source": "channelsControls",
+                            "title": "{{item}}",
+                            "value": "{{item}}"
+                        }
+                    ]
+                },
+				"condition": {
+					"type": "string",
+					"title": "Condition",
+                    "propertyOrder": 30,
+                    "enum": [
+                        "equal",
+                        "greater",
+                        "less",
+                        "change"
+                    ],
+                    "default": "equal",
+                    "options": {
+                        "grid_columns": 6,
+						"enum_titles": [
+						  "Equal",
+						  "Greater",
+						  "Less",
+						  "Change"
+						]
+                    }
+				},
+				"value": {
+					"type": "number",
+					"title": "Value",
+					"propertyOrder": 40,
+					"options": {
+						"grid_columns": 6
+					}
+				}
+            },
+			"required": [
+				"control",
+				"condition",
+				"value"
+			]
+        }
+    },
+    "translations": {
+        "ru": {
+			"Lightings settings": "Настройки освещения",
+			"Configuration of Lightings settings": "Конфигурация источников света и датчиков управления",
+			"Master switch": "Мастер выключатель",
+			"Аllows you to control subordinate light sources": "Позволяет управлять источниками света подчиненных мест",
+			"HW switch": "Выключатель",
+			"Hardware switch control": "Свойство устройства, управляющего выключателем",
+			"Sub locations": "Подчиненные места",
+			"Sources": "Источники",
+			"Controls": "Датчики",
+			"Power off delay": "Задержка отключения",
+			"Auto power off": "Включение по датчикам",
+			"Name": "Наименование",
+			"Source": "Источник",
+			"Control": "Датчик",
+			"Value": "Значение",
+			"Brightness": "Яркость",
+			"row": "Строка",
+			"Condition": "Условие",
+			"Equal": "Равно",
+			"Greater": "Больше",
+			"Less": "Меньше",
+			"Change": "Изменение",
+			"Illuminance sensor": "Датчик освещения"
+		}
+	}
+
+}
