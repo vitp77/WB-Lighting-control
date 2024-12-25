@@ -1,5 +1,4 @@
 var configLightingFile = '/mnt/data/etc/wb-lighting-control/wb-lightings-settings.conf';
-var configWebUIFile = '/mnt/data/etc/wb-webui.conf';
 var deviceName = 'lightingGroupControl';
 
 var devicesProperties = {};
@@ -15,6 +14,7 @@ defineVirtualDevice(deviceName, {
 });
 
 function devName(control) {
+    log.debug("devName - {}".formar(control));
     var words = control.split('/');
     return words[0];
 }
@@ -37,7 +37,7 @@ function setDevicesControlsValue(device, cellsName, value, notify) {
         if (device.getControl(cellsName).getValue() != value) {
             device.getControl(cellsName).setValue({
                 value: value,
-                notify: false
+                notify: notify
             });
             return true;
         }
@@ -98,13 +98,13 @@ function setDependenciesRangeByVControl(groupControl) {
 }
 
 function createSwitchesRules(groupControl, kindControls) {
-    defineRule({
+    defineRule("{} (dep)".format(groupControl), {
         whenChanged: kindControls,
         then: function() {
             setSwitchControl(groupControl);
         }
     });
-    defineRule({
+    defineRule("{}".format(groupControl), {
         whenChanged: groupControl,
         then: function() {
             setDependenciesSwitchByVControl(groupControl);
@@ -113,16 +113,53 @@ function createSwitchesRules(groupControl, kindControls) {
 }
 
 function createRangesRules(groupControl, kindControls) {
-    defineRule({
+    defineRule("{} (dep)".format(groupControl), {
         whenChanged: kindControls,
         then: function() {
             setRangeControl(groupControl);
         }
     });
-    defineRule({
+    defineRule("{}".format(groupControl), {
         whenChanged: groupControl,
         then: function() {
             setDependenciesRangeByVControl(groupControl);
+        }
+    });
+}
+
+function createIlluminanceAutoPowerOffRule(control, locationName) {
+    defineRule("IlluminanceAutoPowerOff ({})".format(locationName), {
+        asSoonAs: function(){
+          if (control in dRControls) {
+              var scenarioId = dRControls[control];
+              return dev[control] >= scenario.illuminance.value;
+          }
+          return false;
+        },
+        then: function(newValue, devName, cellName) {
+            updateDRScenario('{}/{}'.format(devName, cellName), newValue);
+        }
+    });
+}
+
+function createAutoPowerOffRule(controls, locationName) {
+    defineRule("AutoPowerOff ({})".format(locationName), {
+        whenChanged: controls,
+        then: function(newValue, devName, cellName) {
+            updateDRScenario('{}/{}'.format(devName, cellName), newValue);
+        }
+    });
+}
+
+function createMasterSwitchRule(masterSwitchControl, deviceControlSwitchId) {
+    defineRule("{} -> {}".format(masterSwitchControl, deviceControlSwitchId), {
+        whenChanged: masterSwitchControl,
+        then: function(newValue, devName, cellName) {
+            if (typeof newValue == 'boolean') {
+                setControlsValue(deviceControlSwitchId, newValue, true);
+            } else {
+                setControlsValue(deviceControlSwitchId, !dev[deviceControlSwitchId], true);
+            }
         }
     });
 }
@@ -137,6 +174,54 @@ function setDeviceProperties(groupControl, slaveControls) {
             devicesProperties[control].parrentControl = groupControl;
         }
     });
+}
+
+function createAutoPowerOffScenario(location, locationName) {
+    if ('autoPowerOff' in location && location.autoPowerOff == true) {
+        var scenarioId = Object.keys(dRScenarios).length;
+        var scenario = {
+            'powerOffDelay': location.powerOffDelay,
+            'lightingSources': [],
+            'illuminance': {
+                'sensor': '',
+                'value': 100
+            },
+            'lightingControls': [],
+			'brightness': [],
+			'brightnessValues': {}
+        };
+        var controls = [];
+        if ('illuminance' in location) {
+            if ('sensor' in location.illuminance && location.illuminance.sensor.length > 0) {
+                scenario.illuminance.sensor = location.illuminance.sensor;
+                scenario.illuminance.value = location.illuminance.value;
+                dRControls[scenario.illuminance.sensor] = scenarioId;
+                createIlluminanceAutoPowerOffRule(lightingSource.source)
+            }
+        }
+        if ('lightingSources' in location) {
+            location.lightingSources.forEach(function(lightingSource) {
+                controls.push(lightingSource.source);
+                scenario.lightingSources.push(lightingSource.source);
+                dRControls[lightingSource.source] = scenarioId;
+				if(lightingSource.brightness.length > 0) {
+					scenario.brightness.push(lightingSource.brightness);
+				}
+            });
+        }
+        if ('lightingControls' in location) {
+            location.lightingControls.forEach(function(controlsProp) {
+                scenario.lightingControls.push({
+                    'control': controlsProp.control,
+                    'value': controlsProp.value
+                });
+                controls.push(controlsProp.control);
+                dRControls[controlsProp.control] = scenarioId;
+            });
+        }
+        createAutoPowerOffRule(controls, locationName);
+        dRScenarios[scenarioId] = scenario;
+    }
 }
 
 function updateCounter() {
@@ -214,7 +299,6 @@ function updateDRScenario(controlId, value) {
                     }
                 }
                 if (onLightingSource) {
-                  log.debug(controlId, JSON.stringify(scenario.lightingSources, null, 2));
                     scenario.lightingSources.forEach(function(source) {
                         if (dev[source] != true) {
                             setControlsValue(source, true, true);
@@ -226,11 +310,50 @@ function updateDRScenario(controlId, value) {
     }
 }
 
+function newLocationsControls() {
+  return {
+    'switches': [],
+    'ranges': []};
+}
+
+function dependenciesControlsLocation(location) {
+    var dependenciesControls = newLocationsControls();
+    // Сбор сведений об источниках текущей локации
+    if ('lightingSources' in location) {
+        location.lightingSources.forEach(function(lightingSource) {
+            if(lightingSource.source.length > 0) {
+                dependenciesControls.switches.push(lightingSource.source);
+                if ('brightness' in lightingSource && lightingSource.brightness.length > 0) {
+                    dependenciesControls.ranges.push(lightingSource.brightness);
+                }
+            }
+        });
+    }
+    // Сбор сведений об источниках дочерних локаций
+    if ('locations' in location) {
+        location.locations.forEach(function(subLocation) {
+            var subDependenciesControls = createGroupControls(subLocation);
+            if (subDependenciesControls.switches.length > 0) {
+                subDependenciesControls.switches.forEach(function(switchControl) {
+                    if (switchControl.length > 0) {
+                        dependenciesControls.switches.push(switchControl);
+                    }
+                });
+            }
+            if (subDependenciesControls.ranges.length > 0) {
+                subDependenciesControls.ranges.forEach(function(rangeControl) {
+                    if (rangeControl.length > 0) {
+                        dependenciesControls.ranges.push(rangeControl);
+                    }
+                });
+            }
+        });
+    }
+    return dependenciesControls
+}
+
 function createGroupControls(location) {
-    var currentControls = {
-        'switches': [],
-        'ranges': []
-    };
+    var currentControls = newLocationsControls();
     var devicelightingControl = getDevice(deviceName);
     var locationName = location.name;
     if (location.name.length == 0 && location.id == '00000000-0000-0000-0000-000000000000') {
@@ -241,6 +364,7 @@ function createGroupControls(location) {
     var controlSwitchId = 'switch {}'.format(location.name);
     var deviceControlSwitchId = '{}/{}'.format(deviceName, controlSwitchId);
     if (masterSwitchUse) {
+        // Создание виртуального мастер-выключателя, что бы занять его порядковый номер
         devicelightingControl.addControl(
             controlSwitchId, {
                 title: locationName,
@@ -251,135 +375,58 @@ function createGroupControls(location) {
             });
         currentControls.switches.push(deviceControlSwitchId);
     }
-    var kindControls = {
-        'switches': [],
-        'ranges': []
-    };
-    if ('lightingSources' in location) {
-        location.lightingSources.forEach(function(lightingSource) {
-            kindControls.switches.push(lightingSource.source);
-            if ('brightness' in lightingSource) {
-                kindControls.ranges.push(lightingSource.brightness);
-            }
-        });
-    }
+  
+    // Сбор сведений о зависимых котнтролах с созданием контролов подчиненных локаций
+    var dependenciesControls = dependenciesControlsLocation(location);
 
     // Сценарий темная комната (серая если еще датчик света)
-    if ('autoPowerOff' in location && location.autoPowerOff == true) {
-        var scenarioId = Object.keys(dRScenarios).length;
-        var scenario = {
-            'powerOffDelay': location.powerOffDelay,
-            'lightingSources': [],
-            'illuminance': {
-                'sensor': '',
-                'value': 100
-            },
-            'lightingControls': [],
-			'brightness': [],
-			'brightnessValues': {}
-        };
-        var controls = [];
-        if ('illuminance' in location) {
-            if ('sensor' in location.illuminance && location.illuminance.sensor.length > 0) {
-                scenario.illuminance.sensor = location.illuminance.sensor;
-                scenario.illuminance.value = location.illuminance.value;
-                controls.push(scenario.illuminance.sensor);
-                dRControls[scenario.illuminance.sensor] = scenarioId;
-            }
-        }
-        if ('lightingSources' in location) {
-            location.lightingSources.forEach(function(lightingSource) {
-                controls.push(lightingSource.source);
-                scenario.lightingSources.push(lightingSource.source);
-                dRControls[lightingSource.source] = scenarioId;
-				if(lightingSource.brightness.length > 0) {
-					scenario.brightness.push(lightingSource.brightness);
-				}
-            });
-        }
-        if ('lightingControls' in location) {
-            location.lightingControls.forEach(function(controlsProp) {
-                scenario.lightingControls.push({
-                    'control': controlsProp.control,
-                    'value': controlsProp.value
-                });
-                controls.push(controlsProp.control);
-                dRControls[controlsProp.control] = scenarioId;
-            });
-        }
-        defineRule({
-            whenChanged: controls,
-            then: function(newValue, devName, cellName) {
-                updateDRScenario('{}/{}'.format(devName, cellName), newValue);
-            }
-        });
-        dRScenarios[scenarioId] = scenario;
-        if (masterSwitchUse) {
-            if ('masterSwitchControl' in location.masterSetting && location.masterSetting.masterSwitchControl.length > 0) {
-                defineRule({
-                    whenChanged: location.masterSetting.masterSwitchControl,
-                    then: function(newValue, devName, cellName) {
-                        if (typeof newValue == 'boolean') {
-                            setControlsValue(deviceControlSwitchId, newValue, true);
-                        } else {
-                            setControlsValue(deviceControlSwitchId, !dev[deviceControlSwitchId], true);
-                        }
-                    }
-                });
-            }
-        }
-    }
+    createAutoPowerOffScenario(location, locationName);
 
-    // Дочерние локации
-    if ('locations' in location) {
-        location.locations.forEach(function(subLocation) {
-            var subKindControls = createGroupControls(subLocation);
-            if (subKindControls.switches.length > 0) {
-                subKindControls.switches.forEach(function(sw) {
-                    if (sw.length > 0) {
-                        kindControls.switches.push(sw);
-                        if (sw in devicesProperties) {
-                            devicesProperties[sw].parrentControl = deviceControlSwitchId;
-                        }
-                    }
-                });
-            }
-            if (subKindControls.ranges.length > 0) {
-                subKindControls.ranges.forEach(function(range) {
-                    if (range.length > 0) {
-                        kindControls.ranges.push(range);
-                        if (range in devicesProperties) {
-                            devicesProperties[range].parrentControl = deviceControlRangeId;
-                        }
-                    }
-                });
-            }
-        });
+    // Если мастер выключателя нет возврат коллекции подчиненных контролов
+    if (!masterSwitchUse) {
+        return dependenciesControls;
     }
-    if (masterSwitchUse) {
-        createSwitchesRules(deviceControlSwitchId, kindControls.switches);
-        setDeviceProperties(deviceControlSwitchId, kindControls.switches);
-        if (kindControls.ranges.length > 0) {
-            var controlRangeId = 'range {}'.format(location.name);
-            var deviceControlRangeId = '{}/{}'.format(deviceName, controlRangeId);
-            devicelightingControl.addControl(
-                controlRangeId, {
-                    title: 'Уровень',
-                    type: 'range',
-                    value: 100,
-                    readonly: false,
-                    min: 0,
-                    max: 100,
-                    order: order + 5
-                });
-            currentControls.ranges.push(deviceControlRangeId);
-            createRangesRules(deviceControlRangeId, kindControls.ranges);
-            setDeviceProperties(deviceControlRangeId, kindControls.ranges);
-        }
-    } else {
-        return kindControls;
+  
+    createSwitchesRules(deviceControlSwitchId, dependenciesControls.switches);
+    setDeviceProperties(deviceControlSwitchId, dependenciesControls.switches);
+  
+    if (dependenciesControls.ranges.length > 0) {
+        var controlRangeId = 'range {}'.format(location.name);
+        var deviceControlRangeId = '{}/{}'.format(deviceName, controlRangeId);
+        devicelightingControl.addControl(
+            controlRangeId, {
+                title: 'Уровень',
+                type: 'range',
+                value: 100,
+                readonly: false,
+                min: 0,
+                max: 100,
+                order: order + 5
+            });
+        currentControls.ranges.push(deviceControlRangeId);
+        createRangesRules(deviceControlRangeId, dependenciesControls.ranges);
+        setDeviceProperties(deviceControlRangeId, dependenciesControls.ranges);
     }
+  
+    // Создание правила для 'железного' мастер-выключателя
+    if('masterSwitchControl' in location.masterSetting && location.masterSetting.masterSwitchControl.length > 0) {
+        createMasterSwitchRule(location.masterSetting.masterSwitchControl, deviceControlSwitchId);
+    }
+  
     return currentControls;
+}
+
+function updateSettings() {
+    var command = "python3 /mnt/data/etc/wb-lighting-control/wb-lighting-control-util.py --UpdateSettings";
+    runShellCommand(command, {
+        captureOutput: true,
+        exitCallback: function (exitCode, capturedOutput) {
+            if (exitCode !== 0 && exitCode !== 124) {
+                log.warning("Command Controls exited with code: {}", exitCode);
+                return;
+            }
+        }
+    });
 }
 
 function saveConfigFile(config, configFileName) {
@@ -408,27 +455,7 @@ function applyConfiguration() {
         saveConfigFile(configLighting, configLightingFile);
     }
     createGroupControls(configLighting.location, []);
-    try {
-        var webUIConfig = readConfig(configWebUIFile);
-        var allLightDashboard;
-        webUIConfig.dashboards.forEach(function(dashboard) {
-            if (dashboard.id == 'allLight') {
-                allLightDashboard = dashboard;
-            }
-        });
-        if (allLightDashboard === undefined) {
-            allLightDashboard = {
-                'id': 'allLight',
-                'isSvg': false,
-                'name': 'Освещение',
-                'widgets': []
-            };
-            webUIConfig.dashboards.push(allLightDashboard);
-            //saveConfigFile(webUIConfig, configWebUIFile);
-        }
-    } catch (error) {
-        return;
-    }
 }
 
-applyConfiguration();
+setTimeout(applyConfiguration, 10000);
+setTimeout(updateSettings, 20000);

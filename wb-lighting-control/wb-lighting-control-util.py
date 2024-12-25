@@ -4,14 +4,13 @@ import sys
 import json
 import os
 import time
-#import re
-#import codecs
 
 from paho.mqtt import client as mqtt
 from pprint import pprint
 
 lightingsConfigFile = '/mnt/data/etc/wb-lighting-control/wb-lightings-settings.conf'
 locationsConfigFile = '/mnt/data/etc/wb-location-settings/wb-locations-settings.conf'
+webUiConfigFile = '/mnt/data/etc/wb-webui.conf'
 
 controls = {
     'channelsSources': [],
@@ -41,11 +40,10 @@ def load_json(filename):
 
 def save_json(filename, content):
     try:
-        if os.path.exists(filename):
-            fp = open(filename, "w")
-            fp.write(json.dumps(content, indent=2))
-            fp.close()
-    except:
+        with open(filename, "w") as file:
+            file.write(json.dumps(content, indent=2))
+    except Exception as error:
+        print(error, file=sys.stderr)
         pass
     
 # Подготовка коллекции каналов
@@ -264,15 +262,166 @@ def updateSettings():
     
     save_json(lightingsConfigFile, lightingConfig)
     print('Обновлен файл настроек', file=sys.stderr)
+    updateWidgets()
+    
+# Обновление виджета
+
+def newUpdateSummary():
+    return {
+        'controls': [],
+        'useRangeControls': False,
+        'updateWidgets': False}
+
+def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUiWidgets, isRoot):
+    updateSummary = newUpdateSummary()
+    widgetPosition = len(allLightDashboardWidgets)
+    createWidget = isRoot
+    if ('lightingSources' in location):
+        counter = 0
+        for lightingSource in location['lightingSources']:
+            lightingSourceName = lightingSource['name']
+            if (len(lightingSourceName) == 0):
+                lightingSourceName = location['name']
+            if (len(lightingSourceName) == 0):
+                lightingSourceName = 'Свет'
+                if (counter > 0):
+                    lightingSourceName = lightingSourceName + ' ({})'.format(counter)
+            if (len(lightingSource['source']) > 0):
+                updateSummary['controls'].append(
+                    {
+                        'id': lightingSource['source'],
+                        'name': lightingSourceName,
+                        'extra': {},
+                        'type': 'switch'
+                    }
+                )
+            if (len(lightingSource['brightness']) > 0):
+                updateSummary['useRangeControls'] = True
+                updateSummary['controls'].append(
+                    {
+                        'id': lightingSource['brightness'],
+                        'name': ' ',
+                        'extra': {},
+                        'type': 'range'
+                    }
+                )
+            counter += 1
+    if ('locations' in location):
+        controlsLocations = []
+        for subLocation in location['locations']:
+            updateSubLocationSummary = updateLocationWidgets(subLocation, allLightDashboardWidgets, webUiConfig, webUiWidgets, False)
+            controlsLocations.extend(updateSubLocationSummary['controls'])
+            if (updateSubLocationSummary['useRangeControls'] == True):
+                updateSummary['useRangeControls'] = True
+            if (updateSubLocationSummary['updateWidgets'] == True):
+                updateSummary['updateWidgets'] = True
+        if (len(controlsLocations) > 0):
+            updateSummary['controls'] = controlsLocations + updateSummary['controls']
+            if (not updateSummary['useRangeControls']):
+                for controlsLocation in controlsLocations:
+                    if (controlsLocation['type'] == 'range'):
+                        updateSummary['useRangeControls'] = True
+    if (('masterSwitchUse' in location['masterSetting']) and (location['masterSetting']['masterSwitchUse'])):
+        if (len(updateSummary['controls']) > 0):
+            createWidget = True
+        lightingGroupControlName = 'Весь свет'
+        if (not createWidget):
+            lightingGroupControlName = location['name']
+        updateSummary['controls'].insert(0,
+            {
+                'id': 'lightingGroupControl/switch ' + location['name'],
+                'name': lightingGroupControlName,
+                'extra': {},
+                'type': 'switch'
+            })
+        if (updateSummary['useRangeControls']):
+            updateSummary['controls'].insert(1,
+                {
+                    'id': 'lightingGroupControl/range ' + location['name'],
+                    'name': ' ',
+                    'extra': {},
+                    'type': 'range'
+                })
+    if (createWidget):
+        newWidgetName = location['name']
+        if (isRoot):
+            newWidgetName = 'Все освещение'
+        newWidget = {
+            'id': location['id'],
+            'name': newWidgetName,
+            'cells': updateSummary['controls']
+        }
+        allLightDashboardWidgets.insert(widgetPosition, newWidget['id'])
+        updateWidgets = True
+        if (newWidget['id'] in webUiWidgets):
+            if (newWidget == webUiWidgets[newWidget['id']]):
+                updateWidgets = False
+            else:
+                webUiConfig['widgets'].remove(webUiWidgets[newWidget['id']])
+        if (updateWidgets):
+            updateSummary['updateWidgets'] = True
+            webUiConfig['widgets'].append(newWidget)
+        updateSummary['controls'] = []
+    return updateSummary
+    
+def updateWidgets():
+    webUiConfig = load_json(webUiConfigFile)
+    if('dashboards' not in webUiConfig):
+        print('Не найден раздел виджетов', file=sys.stderr)
+        return
+    allLightDashboard = None
+    for dashboard in webUiConfig['dashboards']:
+        if (dashboard['id'] == 'allLight'):
+            allLightDashboard = dashboard
+    if (allLightDashboard is None):
+        allLightDashboard = {
+            'id': 'allLight',
+            'isSvg': False,
+            'name': 'Освещение',
+            'widgets': []
+        }
+        webUiConfig['dashboards'].append(allLightDashboard)
+    allLightDashboardWidgets = []
+    lightingConfig = load_json(lightingsConfigFile)
+    webUiWidgets = {}
+    for webUiWidget in webUiConfig['widgets']:
+        webUiWidgets[webUiWidget['id']] = webUiWidget
+    if ('location' not in lightingConfig):
+        print('Не найдены настройки освещения', file=sys.stderr)
+        return
+    saveConfig = False
+    updateSummary = updateLocationWidgets(lightingConfig['location'], allLightDashboardWidgets, webUiConfig, webUiWidgets, True)
+    if (updateSummary['updateWidgets']):
+        saveConfig = True
+        print('Обновление виджетов', file=sys.stderr)
+    if (allLightDashboard['widgets'] != allLightDashboardWidgets):
+        for widgetId in allLightDashboard['widgets']:
+            if (widgetId not in allLightDashboardWidgets) and (widgetId in webUiWidgets):
+                webUiConfig['widgets'].remove(webUiWidgets[widgetId])
+        allLightDashboard['widgets'] = allLightDashboardWidgets
+        saveConfig = True
+        print('Обновление коллекции виджетов панели освещения', file=sys.stderr)
+    if (saveConfig):
+        os.rename(webUiConfigFile, webUiConfigFile + '.' + time.strftime("%Y%m%d_%H%M%S"))
+        save_json(webUiConfigFile, webUiConfig)
+        print('Обновлена панель освещения', file=sys.stderr)
+    else:
+        print('Обновление панели освещения не требуется', file=sys.stderr)
     
 def main():
     args = {
         '--UpdatesChannels': updatesChannels,
-        '--UpdateSettings': updateSettings
+        '--UpdateSettings': updateSettings,
+        '--UpdateWidgets': updateWidgets
     }
 
     if (len(sys.argv) > 1 and sys.argv[1] in args):
         return args[sys.argv[1]]()
+    else:
+        print('Launch parameters:', file=sys.stderr)
+        print('     --UpdatesChannels', file=sys.stderr)
+        print('     --UpdateSettings', file=sys.stderr)
+        print('     --UpdateWidgets', file=sys.stderr)
 
     return
     
