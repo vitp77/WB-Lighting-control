@@ -327,9 +327,15 @@ def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUi
         lightingGroupControlName = 'Весь свет'
         if (not createWidget):
             lightingGroupControlName = location['name']
+        idSwitch = 'lightingGroupControl/switch ' + location['name']
+        if (('masterSwitchControl' in location['masterSetting'])
+            and (len(location['masterSetting']['masterSwitchControl']) > 0)
+            and (location['masterSetting']['masterSwitchControl'].find('counter') == -1)):
+            
+            idSwitch = location['masterSetting']['masterSwitchControl']
         updateSummary['controls'].insert(0,
             {
-                'id': 'lightingGroupControl/switch ' + location['name'],
+                'id': idSwitch,
                 'name': lightingGroupControlName,
                 'extra': {},
                 'type': 'switch'

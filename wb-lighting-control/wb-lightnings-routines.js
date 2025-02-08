@@ -13,22 +13,30 @@ defineVirtualDevice(deviceName, {
     cells: {}
 });
 
-function devName(control) {
-    log.debug("devName - {}".formar(control));
+function partsOfPathToControl(control) {
+    if(control === undefined) {
+      log.debug("devName - undefined");
+      return undefined;
+    } else if(control === null) {
+      log.debug("devName - Null");
+      return undefined;
+    }
     var words = control.split('/');
-    return words[0];
-}
-
-function cellName(control) {
-    var words = control.split('/');
-    return words[1];
+    if(words.length < 2) {return undefined;}
+	return {
+		devName: words[0],
+		cellName: words[1]
+	}
 }
 
 function setControlsValue(control, value, notify) {
-    var device = getDevice(devName(control));
-    if (device != undefined) {
-        return setDevicesControlsValue(device, cellName(control), value, notify);
-    }
+	var partsOfPath = partsOfPathToControl(control);
+	if (partsOfPath != undefined) {
+		var device = getDevice(partsOfPath.devName);
+		if (device != undefined) {
+			return setDevicesControlsValue(device, partsOfPath.cellName, value, notify);
+		}
+	}
     return false;
 }
 
@@ -45,99 +53,140 @@ function setDevicesControlsValue(device, cellsName, value, notify) {
     return false;
 }
 
-function setSwitchControl(groupControl) {
-    var newValue = false;
-    var controls = devicesProperties[groupControl].slaveControls;
-    controls.forEach(function(control) {
-        if (dev[control] != undefined) newValue = newValue || dev[control];
-    });
-    if (setControlsValue(groupControl, newValue, false)) {
-        if (devicesProperties[groupControl].parrentControl.length > 0) {
-            setSwitchControl(devicesProperties[groupControl].parrentControl);
+function valueSlaveSwitchControls(masterControl) {
+	var newValue = false;
+	var controls = devicesProperties[masterControl].slaveControls;
+	controls.forEach(function(control) {
+		if (dev[control] != undefined && dev[control] == true) {
+			newValue = true;
+			return;
+		}
+	});
+	return newValue;
+}
+
+function setSwitchControl(masterControl, value) {
+    var newValue = value;
+    if (newValue != true) {
+		newValue = valueSlaveSwitchControls(masterControl);
+    }
+    if (setControlsValue(masterControl, newValue, false)) {
+        if (devicesProperties[masterControl].parrentControl.length > 0) {
+            setSwitchControl(devicesProperties[masterControl].parrentControl, newValue);
         }
     }
 }
 
-function setDependenciesSwitchByVControl(groupControl) {
-    var controls = devicesProperties[groupControl].slaveControls;
+function setSlaveSwitchMasterControl(masterControl) {
+    var controls = devicesProperties[masterControl].slaveControls;
     controls.forEach(function(control) {
-        var device = getDevice(devName(control));
-        if (device != undefined) {
-            setDevicesControlsValue(device, cellName(control), dev[groupControl], false);
-            if (device.isVirtual()) {
-                setDependenciesSwitchByVControl(control);
-            }
-        }
+		var partsOfPath = partsOfPathToControl(control);
+		if (partsOfPath != undefined) {
+			var device = getDevice(partsOfPath.devName);
+			if (device != undefined) {
+				setDevicesControlsValue(device, partsOfPath.cellName, dev[masterControl], false);
+				if (device.isVirtual()) {
+					setSlaveSwitchMasterControl(control);
+				}
+			}
+		}
     });
 }
 
-function setRangeControl(groupControl) {
-    var newValue = 0;
-    var controls = devicesProperties[groupControl].slaveControls;
-    controls.forEach(function(control) {
-        if (dev[control] != undefined) newValue = Math.max(newValue, dev[control]);
-    });
-    if (setControlsValue(groupControl, newValue, false)) {
-        if (devicesProperties[groupControl].parrentControl.length > 0) {
-            setRangeControl(devicesProperties[groupControl].parrentControl);
+function valueSlaveRangeControls(masterControl, value) {
+	var newValue = value;
+	var controls = devicesProperties[masterControl].slaveControls;
+	controls.forEach(function(control) {
+		if (dev[control] != undefined) {
+			newValue = Math.max(newValue, dev[control]);
+			if (newValue >= 100) return newValue;
+		}
+	});
+	return newValue;
+}
+
+function setRangeControl(masterControl, value) {
+    var newValue = value;
+    if (newValue < 100) {
+		newValue = valueSlaveRangeControls(masterControl, newValue);
+    }
+    if (setControlsValue(masterControl, newValue, false)) {
+        if (devicesProperties[masterControl].parrentControl.length > 0) {
+            setRangeControl(devicesProperties[masterControl].parrentControl, newValue);
         }
     }
 }
 
-function setDependenciesRangeByVControl(groupControl) {
-    var controls = devicesProperties[groupControl].slaveControls;
+function setSlaveRangeMasterControl(masterControl) {
+    var controls = devicesProperties[masterControl].slaveControls;
     controls.forEach(function(control) {
-        var device = getDevice(devName(control));
-        if (device != undefined) {
-            setDevicesControlsValue(device, cellName(control), dev[groupControl], false);
-            if (device.isVirtual()) {
-                setDependenciesRangeByVControl(control);
-            }
-        }
+		var partsOfPath = partsOfPathToControl(control);
+		if (partsOfPath != undefined) {
+			var device = getDevice(partsOfPath.devName);
+			if (device != undefined) {
+				setDevicesControlsValue(device, partsOfPath.cellName, dev[masterControl], false);
+				if (device.isVirtual()) {
+					setSlaveRangeMasterControl(control);
+				}
+			}
+		}
     });
 }
 
-function createSwitchesRules(groupControl, kindControls) {
-    defineRule("{} (dep)".format(groupControl), {
+function createSwitchesRules(masterControl, kindControls) {
+    defineRule("{} (dep)".format(masterControl), {
         whenChanged: kindControls,
-        then: function() {
-            setSwitchControl(groupControl);
+        then: function(newValue, devName, cellName) {
+            setSwitchControl(masterControl, newValue);
         }
     });
-    defineRule("{}".format(groupControl), {
-        whenChanged: groupControl,
+    defineRule("{}".format(masterControl), {
+        whenChanged: masterControl,
         then: function() {
-            setDependenciesSwitchByVControl(groupControl);
+            setSlaveSwitchMasterControl(masterControl);
         }
     });
 }
 
-function createRangesRules(groupControl, kindControls) {
-    defineRule("{} (dep)".format(groupControl), {
+function createRangesRules(masterControl, kindControls) {
+    defineRule("{} (dep)".format(masterControl), {
         whenChanged: kindControls,
-        then: function() {
-            setRangeControl(groupControl);
+        then: function(newValue, devName, cellName) {
+            setRangeControl(masterControl, newValue);
         }
     });
-    defineRule("{}".format(groupControl), {
-        whenChanged: groupControl,
+    defineRule("{}".format(masterControl), {
+        whenChanged: masterControl,
         then: function() {
-            setDependenciesRangeByVControl(groupControl);
+            setSlaveRangeMasterControl(masterControl);
         }
     });
 }
 
-function createIlluminanceAutoPowerOffRule(control, locationName) {
+function createIlluminanceAutoPowerOffRule(scenario, locationName) {
     defineRule("IlluminanceAutoPowerOff ({})".format(locationName), {
         asSoonAs: function(){
-          if (control in dRControls) {
-              var scenarioId = dRControls[control];
-              return dev[control] >= scenario.illuminance.value;
+          if (scenario.illuminance.sensor in dRControls) {
+              return dev[scenario.illuminance.sensor] < scenario.illuminance.value;
           }
           return false;
         },
-        then: function(newValue, devName, cellName) {
-            updateDRScenario('{}/{}'.format(devName, cellName), newValue);
+        then: function() {
+            updateDRScenario(scenario.illuminance.sensor, dev[scenario.illuminance.sensor]);
+        }
+    });
+}
+
+function createAutoPowerControlOffRule(sensor, value, locationName) {
+    defineRule("AutoPowerControlOff ({} {})".format(locationName, sensor), {
+        asSoonAs: function(){
+          if (sensor in dRControls) {
+              return dev[sensor] >= value;
+          }
+          return false;
+        },
+        then: function() {
+            updateDRScenario(sensor, dev[sensor]);
         }
     });
 }
@@ -164,14 +213,14 @@ function createMasterSwitchRule(masterSwitchControl, deviceControlSwitchId) {
     });
 }
 
-function setDeviceProperties(groupControl, slaveControls) {
-    devicesProperties[groupControl] = {
+function setDeviceProperties(masterControl, slaveControls) {
+    devicesProperties[masterControl] = {
         'parrentControl': '',
         'slaveControls': slaveControls
     };
     slaveControls.forEach(function(control) {
         if (control.length > 0 && control in devicesProperties) {
-            devicesProperties[control].parrentControl = groupControl;
+            devicesProperties[control].parrentControl = masterControl;
         }
     });
 }
@@ -180,6 +229,7 @@ function createAutoPowerOffScenario(location, locationName) {
     if ('autoPowerOff' in location && location.autoPowerOff == true) {
         var scenarioId = Object.keys(dRScenarios).length;
         var scenario = {
+			'name': nameLocation(location),
             'powerOffDelay': location.powerOffDelay,
             'lightingSources': [],
             'illuminance': {
@@ -187,7 +237,7 @@ function createAutoPowerOffScenario(location, locationName) {
                 'value': 100
             },
             'lightingControls': [],
-			'brightness': [],
+			'brightness': {},
 			'brightnessValues': {}
         };
         var controls = [];
@@ -196,7 +246,7 @@ function createAutoPowerOffScenario(location, locationName) {
                 scenario.illuminance.sensor = location.illuminance.sensor;
                 scenario.illuminance.value = location.illuminance.value;
                 dRControls[scenario.illuminance.sensor] = scenarioId;
-                createIlluminanceAutoPowerOffRule(lightingSource.source)
+                createIlluminanceAutoPowerOffRule(scenario, locationName);
             }
         }
         if ('lightingSources' in location) {
@@ -205,7 +255,7 @@ function createAutoPowerOffScenario(location, locationName) {
                 scenario.lightingSources.push(lightingSource.source);
                 dRControls[lightingSource.source] = scenarioId;
 				if(lightingSource.brightness.length > 0) {
-					scenario.brightness.push(lightingSource.brightness);
+					scenario.brightness[lightingSource.brightness] = lightingSource.source;
 				}
             });
         }
@@ -215,7 +265,7 @@ function createAutoPowerOffScenario(location, locationName) {
                     'control': controlsProp.control,
                     'value': controlsProp.value
                 });
-                controls.push(controlsProp.control);
+				createAutoPowerControlOffRule(controlsProp.control, controlsProp.value, locationName);
                 dRControls[controlsProp.control] = scenarioId;
             });
         }
@@ -227,13 +277,18 @@ function createAutoPowerOffScenario(location, locationName) {
 function updateCounter() {
     var endedScenariosIds = [];
     Object.keys(dRActiveScenarios).forEach(function(scenarioId) {
-        dRActiveScenarios[scenarioId] -= 1;
+		var scenario = dRScenarios[scenarioId];
+		if (scenario.illuminance.sensor.length > 0 && dev[scenario.illuminance.sensor] < scenario.illuminance.value) {
+			dRActiveScenarios[scenarioId] = scenario.powerOffDelay;
+		} else {
+			dRActiveScenarios[scenarioId] -= 1;
+		}
         if (dRActiveScenarios[scenarioId] <= 0) {
             endedScenariosIds.push(scenarioId);
 		} else if (dRActiveScenarios[scenarioId] == 5) {
 			var scenario = dRScenarios[scenarioId];
-			scenario.brightness.forEach(function(brightnessSource) {
-				if (typeof dev[brightnessSource]  == 'number') {
+			Object.keys(scenario.brightness).forEach(function(brightnessSource) {
+				if (typeof dev[brightnessSource]  == 'number' && dev[scenario.brightness[brightnessSource]] == true) {
 					var currentBrightness = dev[brightnessSource];
 					var newBrightness = Math.round(currentBrightness * 0.7);
 					setControlsValue(brightnessSource, newBrightness, false);
@@ -242,21 +297,26 @@ function updateCounter() {
 			});
         }
     });
-    endedScenariosIds.forEach(function(scenarioId) {
-        delete dRActiveScenarios[scenarioId];
-        var scenario = dRScenarios[scenarioId];
-        scenario.lightingSources.forEach(function(source) {
-            if (dev[source] != false) {
-                setControlsValue(source, false, true);
-            }
-        });
-		restoreBrightness(scenario);
-    });
+	if (endedScenariosIds.length > 0) completingScenarios(endedScenariosIds);
     if (Object.keys(dRActiveScenarios).length > 0) {
         dRTimer = setTimeout(updateCounter, 1000);
     } else {
         dRTimer = null;
     }
+}
+
+function completingScenarios(scenarios) {
+    scenarios.forEach(function(scenarioId) {
+        var scenario = dRScenarios[scenarioId];
+		if (scenarioId in dRActiveScenarios) {
+			log.debug('DR {}: Stop'.format(scenario.name));
+		}
+        delete dRActiveScenarios[scenarioId];
+        scenario.lightingSources.forEach(function(source) {
+            setControlsValue(source, false, true);
+        });
+		restoreBrightness(scenario);
+    });
 }
 
 function restoreBrightness(scenario) {
@@ -268,6 +328,17 @@ function restoreBrightness(scenario) {
 	});
 }
 
+function allLightingSourcesDisabled(scenario) {
+	var lightingSourcesDisabled = true;
+	scenario.lightingSources.forEach(function(source) {
+		if (dev[source] == true) {
+			lightingSourcesDisabled = false;
+			return;
+		} 
+	});
+	return lightingSourcesDisabled;
+}
+
 function updateDRScenario(controlId, value) {
     if (controlId in dRControls) {
         var scenarioId = dRControls[controlId];
@@ -277,15 +348,22 @@ function updateDRScenario(controlId, value) {
             if (typeof value == 'boolean' && value == true) {
                 onEvent = true;
             } else if (typeof value == 'number') {
-                scenario.lightingControls.forEach(function(controls) {
-                    if (controls.control == controlId) {
-                        if (controls.value <= value) {
-                            onEvent = true;
-                        }
-                    }
-                });
+				if (scenario.lightingControls.length == 0) {
+					onEvent = true;
+				} else {
+					scenario.lightingControls.forEach(function(controls) {
+						if (controls.control == controlId) {
+							if (controls.value <= value) {
+								onEvent = true;
+							}
+						}
+					});
+				}
             }
             if (onEvent) {
+				if (!(scenarioId in dRActiveScenarios)) {
+					log.debug('DR {}: Start'.format(scenario.name));
+				}
                 var startTimer = Object.keys(dRActiveScenarios).length == 0;
                 dRActiveScenarios[scenarioId] = scenario.powerOffDelay;
 				restoreBrightness(scenario);
@@ -294,18 +372,20 @@ function updateDRScenario(controlId, value) {
                 }
                 var onLightingSource = scenario.lightingSources.indexOf(controlId) == -1;
                 if (onLightingSource && scenario.illuminance.sensor.length > 0) {
-                    if (dev[scenario.illuminance.sensor] < scenario.illuminance.value) {
+                    if (dev[scenario.illuminance.sensor] >= scenario.illuminance.value) {
                         onLightingSource = false;
                     }
                 }
                 if (onLightingSource) {
                     scenario.lightingSources.forEach(function(source) {
-                        if (dev[source] != true) {
-                            setControlsValue(source, true, true);
-                        }
+                        setControlsValue(source, true, true);
                     });
                 }
-            }
+            } else {
+				if (allLightingSourcesDisabled(scenario)) {
+					completingScenarios([scenarioId]);
+				}
+			}
         }
     }
 }
@@ -316,15 +396,15 @@ function newLocationsControls() {
     'ranges': []};
 }
 
-function dependenciesControlsLocation(location) {
-    var dependenciesControls = newLocationsControls();
+function slaveControlsLocation(location) {
+    var slaveControls = newLocationsControls();
     // Сбор сведений об источниках текущей локации
     if ('lightingSources' in location) {
         location.lightingSources.forEach(function(lightingSource) {
             if(lightingSource.source.length > 0) {
-                dependenciesControls.switches.push(lightingSource.source);
+                slaveControls.switches.push(lightingSource.source);
                 if ('brightness' in lightingSource && lightingSource.brightness.length > 0) {
-                    dependenciesControls.ranges.push(lightingSource.brightness);
+                    slaveControls.ranges.push(lightingSource.brightness);
                 }
             }
         });
@@ -332,67 +412,84 @@ function dependenciesControlsLocation(location) {
     // Сбор сведений об источниках дочерних локаций
     if ('locations' in location) {
         location.locations.forEach(function(subLocation) {
-            var subDependenciesControls = createGroupControls(subLocation);
-            if (subDependenciesControls.switches.length > 0) {
-                subDependenciesControls.switches.forEach(function(switchControl) {
+            var subSlaveControls = createMasterControls(subLocation);
+            if (subSlaveControls.switches.length > 0) {
+                subSlaveControls.switches.forEach(function(switchControl) {
                     if (switchControl.length > 0) {
-                        dependenciesControls.switches.push(switchControl);
+                        slaveControls.switches.push(switchControl);
                     }
                 });
             }
-            if (subDependenciesControls.ranges.length > 0) {
-                subDependenciesControls.ranges.forEach(function(rangeControl) {
+            if (subSlaveControls.ranges.length > 0) {
+                subSlaveControls.ranges.forEach(function(rangeControl) {
                     if (rangeControl.length > 0) {
-                        dependenciesControls.ranges.push(rangeControl);
+                        slaveControls.ranges.push(rangeControl);
                     }
                 });
             }
         });
     }
-    return dependenciesControls
+    return slaveControls;
 }
 
-function createGroupControls(location) {
-    var currentControls = newLocationsControls();
-    var devicelightingControl = getDevice(deviceName);
+function nameLocation(location) {
     var locationName = location.name;
     if (location.name.length == 0 && location.id == '00000000-0000-0000-0000-000000000000') {
         locationName = 'Все освещение';
     }
+	return locationName;
+}
+
+function createMasterControls(location) {
+	order += 10;
+	var orderSwitch = order;
+    var currentControls = newLocationsControls();
+    var devicelightingControl = getDevice(deviceName);
+    var locationName = nameLocation(location);
     var masterSwitchUse = 'masterSetting' in location && 'masterSwitchUse' in location.masterSetting && location.masterSetting.masterSwitchUse == true;
-    var order = devicelightingControl.controlsList().length * 10;
     var controlSwitchId = 'switch {}'.format(location.name);
-    var deviceControlSwitchId = '{}/{}'.format(deviceName, controlSwitchId);
+    var deviceControlSwitchId = '';
     if (masterSwitchUse) {
-        // Создание виртуального мастер-выключателя, что бы занять его порядковый номер
-        devicelightingControl.addControl(
-            controlSwitchId, {
-                title: locationName,
-                type: 'switch',
-                value: false,
-                readonly: false,
-                order: order
-            });
-        currentControls.switches.push(deviceControlSwitchId);
+		if('masterSwitchControl' in location.masterSetting
+			&& location.masterSetting.masterSwitchControl.length > 0
+			&& location.masterSetting.masterSwitchControl.indexOf('counter') == -1) {
+			// 'Железный' мастер-выключатель
+			deviceControlSwitchId = location.masterSetting.masterSwitchControl;
+		} else {
+			// Виртуального мастер-выключателя
+			deviceControlSwitchId = '{}/{}'.format(deviceName, controlSwitchId);
+			devicelightingControl.addControl(
+				controlSwitchId, {
+					title: locationName,
+					type: 'switch',
+					value: false,
+					readonly: false,
+					order: orderSwitch
+				});
+			currentControls.switches.push(deviceControlSwitchId);
+		}
     }
   
     // Сбор сведений о зависимых котнтролах с созданием контролов подчиненных локаций
-    var dependenciesControls = dependenciesControlsLocation(location);
+    var slaveControls = slaveControlsLocation(location);
 
     // Сценарий темная комната (серая если еще датчик света)
     createAutoPowerOffScenario(location, locationName);
 
     // Если мастер выключателя нет возврат коллекции подчиненных контролов
     if (!masterSwitchUse) {
-        return dependenciesControls;
+        return slaveControls;
     }
   
-    createSwitchesRules(deviceControlSwitchId, dependenciesControls.switches);
-    setDeviceProperties(deviceControlSwitchId, dependenciesControls.switches);
+	createSwitchesRules(deviceControlSwitchId, slaveControls.switches);
+	setDeviceProperties(deviceControlSwitchId, slaveControls.switches);
+	// Инициализация начального состояния
+	setSwitchControl(deviceControlSwitchId, false);
   
-    if (dependenciesControls.ranges.length > 0) {
+    if (slaveControls.ranges.length > 0) {
         var controlRangeId = 'range {}'.format(location.name);
         var deviceControlRangeId = '{}/{}'.format(deviceName, controlRangeId);
+		orderRange = orderSwitch + 5;
         devicelightingControl.addControl(
             controlRangeId, {
                 title: 'Уровень',
@@ -401,18 +498,22 @@ function createGroupControls(location) {
                 readonly: false,
                 min: 0,
                 max: 100,
-                order: order + 5
+                order: orderRange
             });
         currentControls.ranges.push(deviceControlRangeId);
-        createRangesRules(deviceControlRangeId, dependenciesControls.ranges);
-        setDeviceProperties(deviceControlRangeId, dependenciesControls.ranges);
+        createRangesRules(deviceControlRangeId, slaveControls.ranges);
+        setDeviceProperties(deviceControlRangeId, slaveControls.ranges);
+		// Инициализация начального состояния
+		setRangeControl(deviceControlRangeId, 0);
     }
   
     // Создание правила для 'железного' мастер-выключателя
-    if('masterSwitchControl' in location.masterSetting && location.masterSetting.masterSwitchControl.length > 0) {
+    if('masterSwitchControl' in location.masterSetting
+		&& location.masterSetting.masterSwitchControl.length > 0
+		&& location.masterSetting.masterSwitchControl.indexOf('counter') != -1) {
         createMasterSwitchRule(location.masterSetting.masterSwitchControl, deviceControlSwitchId);
     }
-  
+	
     return currentControls;
 }
 
@@ -442,6 +543,8 @@ function saveConfigFile(config, configFileName) {
     });
 }
 
+// Нужна глобальная переменная, что-бы корректно рассчитать порядок контролов
+var order = 0;
 function applyConfiguration() {
     var configLighting = {
         'location': {
@@ -454,7 +557,7 @@ function applyConfiguration() {
     } catch (error) {
         saveConfigFile(configLighting, configLightingFile);
     }
-    createGroupControls(configLighting.location, []);
+    createMasterControls(configLighting.location);
 }
 
 setTimeout(applyConfiguration, 10000);
