@@ -7,6 +7,10 @@ var dRScenarios = {};
 var dRControls = {};
 var dRActiveScenarios = {};
 var dRTimer = null;
+var dRStoppedScenarios = {};
+var renewalTimeout = 5;
+var multiplicityRenewals = 2;
+var maximumMultiplicityRenewals = 4;
 
 defineVirtualDevice(deviceName, {
     title: 'Управление группами освещения',
@@ -56,12 +60,12 @@ function setDevicesControlsValue(device, cellsName, value, notify) {
 function valueSlaveSwitchControls(masterControl) {
 	var newValue = false;
 	var controls = devicesProperties[masterControl].slaveControls;
-	controls.forEach(function(control) {
+	for(idx = 0; idx < controls.length; idx++){
+		var control = controls[idx];
 		if (dev[control] != undefined && dev[control] == true) {
-			newValue = true;
-			return;
+			return true;
 		}
-	});
+	}
 	return newValue;
 }
 
@@ -70,10 +74,9 @@ function setSwitchControl(masterControl, value) {
     if (newValue != true) {
 		newValue = valueSlaveSwitchControls(masterControl);
     }
-    if (setControlsValue(masterControl, newValue, false)) {
-        if (devicesProperties[masterControl].parrentControl.length > 0) {
-            setSwitchControl(devicesProperties[masterControl].parrentControl, newValue);
-        }
+    setControlsValue(masterControl, newValue, false);
+    if (devicesProperties[masterControl].parrentControl.length > 0) {
+        setSwitchControl(devicesProperties[masterControl].parrentControl, newValue);
     }
 }
 
@@ -96,12 +99,13 @@ function setSlaveSwitchMasterControl(masterControl) {
 function valueSlaveRangeControls(masterControl, value) {
 	var newValue = value;
 	var controls = devicesProperties[masterControl].slaveControls;
-	controls.forEach(function(control) {
+	for(idx = 0; idx < controls.length; idx++){
+		var control = controls[idx];
 		if (dev[control] != undefined) {
 			newValue = Math.max(newValue, dev[control]);
 			if (newValue >= 100) return newValue;
 		}
-	});
+	}
 	return newValue;
 }
 
@@ -110,10 +114,9 @@ function setRangeControl(masterControl, value) {
     if (newValue < 100) {
 		newValue = valueSlaveRangeControls(masterControl, newValue);
     }
-    if (setControlsValue(masterControl, newValue, false)) {
-        if (devicesProperties[masterControl].parrentControl.length > 0) {
-            setRangeControl(devicesProperties[masterControl].parrentControl, newValue);
-        }
+    setControlsValue(masterControl, newValue, false);
+    if (devicesProperties[masterControl].parrentControl.length > 0) {
+        setRangeControl(devicesProperties[masterControl].parrentControl, newValue);
     }
 }
 
@@ -225,12 +228,13 @@ function setDeviceProperties(masterControl, slaveControls) {
     });
 }
 
-function createAutoPowerOffScenario(location, locationName) {
+function createAutoPowerOffScenario(location, locationName, devicelightingControl, baseOrder) {
     if ('autoPowerOff' in location && location.autoPowerOff == true) {
         var scenarioId = Object.keys(dRScenarios).length;
         var scenario = {
-			'name': nameLocation(location),
+			'name': locationName,
             'powerOffDelay': location.powerOffDelay,
+            'multiplicityTimeout': 1,
             'lightingSources': [],
             'illuminance': {
                 'sensor': '',
@@ -269,9 +273,67 @@ function createAutoPowerOffScenario(location, locationName) {
                 dRControls[controlsProp.control] = scenarioId;
             });
         }
+        var controlSwitchId = autoPowerOnOffId(locationName);
+        devicelightingControl.addControl(
+            controlSwitchId, {
+                title: 'Автоматически вкл./откл. свет ({})'.format(locationName),
+                type: 'switch',
+                value: true,
+                readonly: false,
+                order: baseOrder + 4
+            });
+        var controlRangeId = shutdownTimeoutId(locationName);
+        devicelightingControl.addControl(
+            controlRangeId, {
+                title: 'Таймаут отключения',
+                type: 'range',
+                min: 0,
+                max: scenario.powerOffDelay,
+                value: 0,
+                readonly: true,
+                order: baseOrder + 8
+            });
+        updateShutdownTimeoutTitle(scenarioId, scenario.name)
         createAutoPowerOffRule(controls, locationName);
         dRScenarios[scenarioId] = scenario;
     }
+}
+
+function twoDigitNumberPresentation(value) {
+  if (value > 9) {
+    return '{}'.format(value);
+  }
+  return  '0{}'.format(value);
+}
+
+function updateShutdownTimeoutTitle(scenarioId, scenarioName) {
+  var value = dRActiveScenarios[scenarioId];
+  if (value === undefined) value = 0;
+  var controlRangeId = shutdownTimeoutId(scenarioName);
+  setControlsValue('{}/{}'.format(deviceName, controlRangeId), value, false);
+  var hour = Math.floor(value / 3600);
+  var minute = Math.floor((value / 60) % 60);
+  var second = value % 60
+  var formatSeconds = '{}:{}:{}'.format(twoDigitNumberPresentation(hour), twoDigitNumberPresentation(minute), twoDigitNumberPresentation(second))
+  getDevice(deviceName).getControl(controlRangeId).setTitle('Таймаут отключения ({})'.format(formatSeconds));
+}
+
+function powerOffDelayScenario(scenarioId) {
+  var scenario = dRScenarios[scenarioId];
+  var multiplicityTimeout = scenario.multiplicityTimeout;
+  if (scenarioId in dRStoppedScenarios) {
+    delete dRStoppedScenarios[scenarioId];
+    var newMultiplicityTimeout = scenario.multiplicityTimeout * multiplicityRenewals;
+    if (newMultiplicityTimeout <= maximumMultiplicityRenewals) {
+      scenario.multiplicityTimeout = newMultiplicityTimeout;
+    } else {
+      scenario.multiplicityTimeout = maximumMultiplicityRenewals;
+    }
+  }
+  var powerOffDelay = scenario.powerOffDelay * scenario.multiplicityTimeout;
+  var controlRangeId = shutdownTimeoutId(scenario.name);
+  getDevice(deviceName).getControl(controlRangeId).setMax(powerOffDelay);
+  return powerOffDelay;
 }
 
 function updateCounter() {
@@ -279,13 +341,15 @@ function updateCounter() {
     Object.keys(dRActiveScenarios).forEach(function(scenarioId) {
 		var scenario = dRScenarios[scenarioId];
 		if (scenario.illuminance.sensor.length > 0 && dev[scenario.illuminance.sensor] < scenario.illuminance.value) {
-			dRActiveScenarios[scenarioId] = scenario.powerOffDelay;
+			dRActiveScenarios[scenarioId] = powerOffDelayScenario(scenarioId);
 		} else {
 			dRActiveScenarios[scenarioId] -= 1;
 		}
+        updateShutdownTimeoutTitle(scenarioId, scenario.name);
         if (dRActiveScenarios[scenarioId] <= 0) {
             endedScenariosIds.push(scenarioId);
-		} else if (dRActiveScenarios[scenarioId] == 5) {
+		} else if (dRActiveScenarios[scenarioId] == renewalTimeout) {
+            dRStoppedScenarios[scenarioId] = renewalTimeout * 2;
 			var scenario = dRScenarios[scenarioId];
 			Object.keys(scenario.brightness).forEach(function(brightnessSource) {
 				if (typeof dev[brightnessSource]  == 'number' && dev[scenario.brightness[brightnessSource]] == true) {
@@ -298,11 +362,30 @@ function updateCounter() {
         }
     });
 	if (endedScenariosIds.length > 0) completingScenarios(endedScenariosIds);
-    if (Object.keys(dRActiveScenarios).length > 0) {
+    var endedStoppedScenariosIds = [];
+    Object.keys(dRStoppedScenarios).forEach(function(scenarioId) {
+        if (dRStoppedScenarios[scenarioId] == 0) {
+          endedStoppedScenariosIds.push(scenarioId);
+        } else {
+          dRStoppedScenarios[scenarioId] -= 1;
+        }
+    });
+	if (endedStoppedScenariosIds.length > 0) completingStoppedScenarios(endedStoppedScenariosIds);
+    if (Object.keys(dRActiveScenarios).length > 0 || Object.keys(dRStoppedScenarios).length > 0 ) {
         dRTimer = setTimeout(updateCounter, 1000);
     } else {
         dRTimer = null;
     }
+}
+
+function completingStoppedScenarios(stoppedScenarios) {
+    stoppedScenarios.forEach(function(scenarioId) {
+        delete dRStoppedScenarios[scenarioId];
+        var scenario = dRScenarios[scenarioId];
+        scenario.multiplicityTimeout = 1;
+        var controlRangeId = shutdownTimeoutId(scenario.name);
+        getDevice(deviceName).getControl(controlRangeId).setMax(scenario.powerOffDelay);
+    });
 }
 
 function completingScenarios(scenarios) {
@@ -316,6 +399,7 @@ function completingScenarios(scenarios) {
             setControlsValue(source, false, true);
         });
 		restoreBrightness(scenario);
+        updateShutdownTimeoutTitle(scenarioId, scenario.name);
     });
 }
 
@@ -339,11 +423,23 @@ function allLightingSourcesDisabled(scenario) {
 	return lightingSourcesDisabled;
 }
 
+function autoPowerOnOffId(scenarioName) {
+    return 'autoPowerOnOff ({})'.format(scenarioName);
+}
+
+function shutdownTimeoutId(scenarioName) {
+    return 'shutdownTimeout ({})'.format(scenarioName);
+}
+
 function updateDRScenario(controlId, value) {
     if (controlId in dRControls) {
         var scenarioId = dRControls[controlId];
         if (scenarioId in dRScenarios) {
             var scenario = dRScenarios[scenarioId];
+            var deviceAautoPowerOnOffId = '{}/{}'.format(deviceName, autoPowerOnOffId(scenario.name));
+            if (dev[deviceAautoPowerOnOffId] == false) {
+                return;
+            }
             var onEvent = false;
             if (typeof value == 'boolean' && value == true) {
                 onEvent = true;
@@ -365,10 +461,13 @@ function updateDRScenario(controlId, value) {
 					log.debug('DR {}: Start'.format(scenario.name));
 				}
                 var startTimer = Object.keys(dRActiveScenarios).length == 0;
-                dRActiveScenarios[scenarioId] = scenario.powerOffDelay;
+                dRActiveScenarios[scenarioId] = powerOffDelayScenario(scenarioId);
+                updateShutdownTimeoutTitle(scenarioId, scenario.name);
 				restoreBrightness(scenario);
                 if (startTimer || dRTimer === null) {
+                  if(dRTimer === null) {
                     dRTimer = setTimeout(updateCounter, 1000);
+                  }
                 }
                 var onLightingSource = scenario.lightingSources.indexOf(controlId) == -1;
                 if (onLightingSource && scenario.illuminance.sensor.length > 0) {
@@ -474,7 +573,7 @@ function createMasterControls(location) {
     var slaveControls = slaveControlsLocation(location);
 
     // Сценарий темная комната (серая если еще датчик света)
-    createAutoPowerOffScenario(location, locationName);
+    createAutoPowerOffScenario(location, locationName, devicelightingControl, orderSwitch);
 
     // Если мастер выключателя нет возврат коллекции подчиненных контролов
     if (!masterSwitchUse) {
@@ -489,7 +588,7 @@ function createMasterControls(location) {
     if (slaveControls.ranges.length > 0) {
         var controlRangeId = 'range {}'.format(location.name);
         var deviceControlRangeId = '{}/{}'.format(deviceName, controlRangeId);
-		orderRange = orderSwitch + 5;
+		orderRange = orderSwitch + 2;
         devicelightingControl.addControl(
             controlRangeId, {
                 title: 'Уровень',

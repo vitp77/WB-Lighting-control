@@ -113,7 +113,7 @@ def isDictionariesDifferent(dictionaries1, dictionaries2):
             return True
     return False
         
-def collectControls():
+def collectControls(useastroLightSensor):
     global readingItems
     readingItems = True
 
@@ -128,7 +128,8 @@ def collectControls():
         time.sleep(0.1)
         if (time.time() - start > readTimeout):
             break
-
+    if (useastroLightSensor):
+        controls['illuminanceSensors'].append('astroLightSensor/dayNight')
     controls['channelsSources'].sort()
     controls['channelsControls'].sort()
     controls['illuminanceSensors'].sort()
@@ -145,8 +146,8 @@ def updatecollectControlsInLightingConfig(lightingConfig):
 
 def updatesChannels():
     
-    collectControls()
     lightingConfig = load_json(lightingsConfigFile)
+    collectControls(lightingConfig['astroLightSensor']['useastroLightSensor'])
     if (isCollectsControlsDifferent(lightingConfig['controls'], controls)):
         updatecollectControlsInLightingConfig(lightingConfig)
         save_json(lightingsConfigFile, lightingConfig)
@@ -246,13 +247,15 @@ def updateLocations(newLocations, locations, controls):
 
 def updateSettings():
     needUpdates = False
-    collectControls()
     lightingConfig = load_json(lightingsConfigFile)
+    collectControls(lightingConfig['astroLightSensor']['useastroLightSensor'])
     if ('location' not in lightingConfig):
         lightingConfig = {
+            'astroLightSensor': {'useastroLightSensor': False, 'latitudeLongitude': ''},
             'location': newLightingLocation(),
             'controls': {}}
-    
+    if ('astroLightSensor' not in lightingConfig):
+        lightingConfig['astroLightSensor'] = {'useastroLightSensor': False, 'latitudeLongitude': ''}
     if (isCollectsControlsDifferent(lightingConfig['controls'], controls) or True):
         updatecollectControlsInLightingConfig(lightingConfig)
         needUpdates = True
@@ -348,6 +351,24 @@ def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUi
                     'extra': {},
                     'type': 'range'
                 })
+    if ('autoPowerOff' in location and location['autoPowerOff'] == True):
+        if (len(updateSummary['controls']) > 0):
+            createWidget = True
+        updateSummary['controls'].append(
+            {
+                'id': 'lightingGroupControl/autoPowerOnOff (' + location['name'] + ')',
+                'name': 'Автоматически вкл./откл. свет',
+                'extra': {},
+                'type': 'switch'
+            })
+        updateSummary['controls'].append(
+            {
+                'id': 'lightingGroupControl/shutdownTimeout (' + location['name'] + ')',
+                'name': '',
+                'extra': {},
+                'type': 'range'
+            })
+        
     if (createWidget):
         newWidgetName = location['name']
         if (isRoot):

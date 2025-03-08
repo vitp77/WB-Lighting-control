@@ -13,13 +13,22 @@
         "service": "wb-rules"
     },
     "properties": {
+		"astroLightSensor": {
+			"$ref": "#/definitions/astroLightSensor",
+			"propertyOrder": 10,
+            "options": {
+				"collapsed": true,
+                "disable_edit_json": true,
+				"disable_properties": true
+            }
+		},
 		"location": {
 			"$ref": "#/definitions/locationsSettings",
+			"propertyOrder": 20,
             "options": {
                 "disable_edit_json": true,
-                "wb": {
-                    "disable_title": true
-                }
+                "disable_collapse": true,
+                "disable_properties": true
             }
 		},
         "controls": {
@@ -30,6 +39,7 @@
         }
     },
 	"required": [
+		"astroLightSensor",
 		"location",
 		"controls"
 		],
@@ -92,6 +102,7 @@
             }
         },
         "locationsSettings": {
+			"title": "Locations",
             "type": "object",
             "properties": {
                 "id": {
@@ -386,7 +397,37 @@
 				"condition",
 				"value"
 			]
-        }
+        },
+		"astroLightSensor": {
+			"headerTemplate": "Astronomical sensor of day and night{{: |self.latitudeLongitude}}",
+			"type": "object",
+			"_format": "grid",
+            "properties": {
+				"useastroLightSensor": {
+                    "type": "boolean",
+					"title": "Use astronomical sensor of day and night",
+					"description": "Enables the creation of a virtual device",
+                    "default": false,
+                    "propertyOrder": 20,
+					"_format": "checkbox",
+                    "options": {
+						"grid_columns": 4,
+                        "dependencies": {
+                            "showLocations": false
+                        }
+					}
+				},
+                "latitudeLongitude": {
+                    "type": "string",
+                    "title": "Latitude, longitude",
+					"description": "Copy the latitude and longitude of a point on Yandex maps",
+                    "propertyOrder": 30,
+                    "options": {
+                        "grid_columns": 6
+                    }
+                }
+			}
+		}
     },
     "translations": {
         "ru": {
@@ -412,7 +453,13 @@
 			"Greater": "Больше",
 			"Less": "Меньше",
 			"Change": "Изменение",
-			"Illuminance sensor": "Датчик освещения"
+			"Illuminance sensor": "Датчик освещения",
+			"Locations": "Места автоматизации",
+			"Astronomical sensor of day and night{{: |self.latitudeLongitude}}": "Астрономический сенсор дня и ночи{{: |self.latitudeLongitude}}",
+			"Use astronomical sensor of day and night": "Использовать астрономический сенсор",
+			"Latitude, longitude": "Широта, долгота",
+			"Copy the latitude and longitude of a point on Yandex maps": "Скопируйте широту и долготу точки на Яндекс картах",
+			"Enables the creation of a virtual device": "Включает создание виртуального устройства"
 		}
 	}
 
