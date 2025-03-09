@@ -9,12 +9,12 @@
         "disable_collapse": true
     },
     "configFile": {
-        "path": "/mnt/data/etc/wb-lighting-control/wb-lightings-settings.conf",
+        "path": "/mnt/data/etc/wb-lightings-settings.conf",
         "service": "wb-rules"
     },
     "properties": {
-		"astroLightSensor": {
-			"$ref": "#/definitions/astroLightSensor",
+		"astronomicalDayNightSensor": {
+			"$ref": "#/definitions/astronomicalDayNightSensor",
 			"propertyOrder": 10,
             "options": {
 				"collapsed": true,
@@ -39,7 +39,7 @@
         }
     },
 	"required": [
-		"astroLightSensor",
+		"astronomicalDayNightSensor",
 		"location",
 		"controls"
 		],
@@ -398,12 +398,12 @@
 				"value"
 			]
         },
-		"astroLightSensor": {
+		"astronomicalDayNightSensor": {
 			"headerTemplate": "Astronomical sensor of day and night{{: |self.latitudeLongitude}}",
 			"type": "object",
 			"_format": "grid",
             "properties": {
-				"useastroLightSensor": {
+				"useAstronomicalDayNightSensor": {
                     "type": "boolean",
 					"title": "Use astronomical sensor of day and night",
 					"description": "Enables the creation of a virtual device",
@@ -455,8 +455,8 @@
 			"Change": "Изменение",
 			"Illuminance sensor": "Датчик освещения",
 			"Locations": "Места автоматизации",
-			"Astronomical sensor of day and night{{: |self.latitudeLongitude}}": "Астрономический сенсор дня и ночи{{: |self.latitudeLongitude}}",
-			"Use astronomical sensor of day and night": "Использовать астрономический сенсор",
+			"Astronomical sensor of day and night{{: |self.latitudeLongitude}}": "Астрономический датчик дня и ночи{{: |self.latitudeLongitude}}",
+			"Use astronomical sensor of day and night": "Использовать астрономический датчик",
 			"Latitude, longitude": "Широта, долгота",
 			"Copy the latitude and longitude of a point on Yandex maps": "Скопируйте широту и долготу точки на Яндекс картах",
 			"Enables the creation of a virtual device": "Включает создание виртуального устройства"

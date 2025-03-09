@@ -8,7 +8,7 @@ import time
 from paho.mqtt import client as mqtt
 from pprint import pprint
 
-lightingsConfigFile = '/mnt/data/etc/wb-lighting-control/wb-lightings-settings.conf'
+lightingsConfigFile = '/mnt/data/etc/wb-lightings-settings.conf'
 locationsConfigFile = '/mnt/data/etc/wb-location-settings/wb-locations-settings.conf'
 webUiConfigFile = '/mnt/data/etc/wb-webui.conf'
 
@@ -113,7 +113,7 @@ def isDictionariesDifferent(dictionaries1, dictionaries2):
             return True
     return False
         
-def collectControls(useastroLightSensor):
+def collectControls(useAstronomicalDayNightSensor):
     global readingItems
     readingItems = True
 
@@ -128,8 +128,8 @@ def collectControls(useastroLightSensor):
         time.sleep(0.1)
         if (time.time() - start > readTimeout):
             break
-    if (useastroLightSensor):
-        controls['illuminanceSensors'].append('astroLightSensor/dayNight')
+    if (useAstronomicalDayNightSensor):
+        controls['illuminanceSensors'].append('astronomicalDayNightSensor/dayNight')
     controls['channelsSources'].sort()
     controls['channelsControls'].sort()
     controls['illuminanceSensors'].sort()
@@ -147,7 +147,7 @@ def updatecollectControlsInLightingConfig(lightingConfig):
 def updatesChannels():
     
     lightingConfig = load_json(lightingsConfigFile)
-    collectControls(lightingConfig['astroLightSensor']['useastroLightSensor'])
+    collectControls(lightingConfig['astronomicalDayNightSensor']['useAstronomicalDayNightSensor'])
     if (isCollectsControlsDifferent(lightingConfig['controls'], controls)):
         updatecollectControlsInLightingConfig(lightingConfig)
         save_json(lightingsConfigFile, lightingConfig)
@@ -248,14 +248,14 @@ def updateLocations(newLocations, locations, controls):
 def updateSettings():
     needUpdates = False
     lightingConfig = load_json(lightingsConfigFile)
-    collectControls(lightingConfig['astroLightSensor']['useastroLightSensor'])
+    collectControls(lightingConfig['astronomicalDayNightSensor']['useAstronomicalDayNightSensor'])
     if ('location' not in lightingConfig):
         lightingConfig = {
-            'astroLightSensor': {'useastroLightSensor': False, 'latitudeLongitude': ''},
+            'astronomicalDayNightSensor': {'useAstronomicalDayNightSensor': False, 'latitudeLongitude': ''},
             'location': newLightingLocation(),
             'controls': {}}
-    if ('astroLightSensor' not in lightingConfig):
-        lightingConfig['astroLightSensor'] = {'useastroLightSensor': False, 'latitudeLongitude': ''}
+    if ('astronomicalDayNightSensor' not in lightingConfig):
+        lightingConfig['astronomicalDayNightSensor'] = {'useAstronomicalDayNightSensor': False, 'latitudeLongitude': ''}
     if (isCollectsControlsDifferent(lightingConfig['controls'], controls) or True):
         updatecollectControlsInLightingConfig(lightingConfig)
         needUpdates = True

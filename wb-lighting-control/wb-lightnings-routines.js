@@ -1,4 +1,4 @@
-var configLightingFile = '/mnt/data/etc/wb-lighting-control/wb-lightings-settings.conf';
+var configLightingFile = '/mnt/data/etc/wb-lightings-settings.conf';
 var deviceName = 'lightingGroupControl';
 
 var devicesProperties = {};
@@ -228,6 +228,14 @@ function setDeviceProperties(masterControl, slaveControls) {
     });
 }
 
+function pushScenarioIdToDRControls(sensor, scenarioId) {
+	if (sensor in dRControls) {
+		dRControls[sensor].push(scenarioId);
+	} else {
+		dRControls[sensor] = [scenarioId];
+	}
+}
+
 function createAutoPowerOffScenario(location, locationName, devicelightingControl, baseOrder) {
     if ('autoPowerOff' in location && location.autoPowerOff == true) {
         var scenarioId = Object.keys(dRScenarios).length;
@@ -249,7 +257,7 @@ function createAutoPowerOffScenario(location, locationName, devicelightingContro
             if ('sensor' in location.illuminance && location.illuminance.sensor.length > 0) {
                 scenario.illuminance.sensor = location.illuminance.sensor;
                 scenario.illuminance.value = location.illuminance.value;
-                dRControls[scenario.illuminance.sensor] = scenarioId;
+                pushScenarioIdToDRControls(scenario.illuminance.sensor, scenarioId);
                 createIlluminanceAutoPowerOffRule(scenario, locationName);
             }
         }
@@ -257,7 +265,7 @@ function createAutoPowerOffScenario(location, locationName, devicelightingContro
             location.lightingSources.forEach(function(lightingSource) {
                 controls.push(lightingSource.source);
                 scenario.lightingSources.push(lightingSource.source);
-                dRControls[lightingSource.source] = scenarioId;
+                pushScenarioIdToDRControls(lightingSource.source, scenarioId);
 				if(lightingSource.brightness.length > 0) {
 					scenario.brightness[lightingSource.brightness] = lightingSource.source;
 				}
@@ -270,7 +278,7 @@ function createAutoPowerOffScenario(location, locationName, devicelightingContro
                     'value': controlsProp.value
                 });
 				createAutoPowerControlOffRule(controlsProp.control, controlsProp.value, locationName);
-                dRControls[controlsProp.control] = scenarioId;
+                pushScenarioIdToDRControls(controlsProp.control, scenarioId);
             });
         }
         var controlSwitchId = autoPowerOnOffId(locationName);
@@ -433,59 +441,60 @@ function shutdownTimeoutId(scenarioName) {
 
 function updateDRScenario(controlId, value) {
     if (controlId in dRControls) {
-        var scenarioId = dRControls[controlId];
-        if (scenarioId in dRScenarios) {
-            var scenario = dRScenarios[scenarioId];
-            var deviceAautoPowerOnOffId = '{}/{}'.format(deviceName, autoPowerOnOffId(scenario.name));
-            if (dev[deviceAautoPowerOnOffId] == false) {
-                return;
-            }
-            var onEvent = false;
-            if (typeof value == 'boolean' && value == true) {
-                onEvent = true;
-            } else if (typeof value == 'number') {
-				if (scenario.lightingControls.length == 0) {
+		dRControls[controlId].forEach(function(scenarioId) {
+			if (scenarioId in dRScenarios) {
+				var scenario = dRScenarios[scenarioId];
+				var deviceAautoPowerOnOffId = '{}/{}'.format(deviceName, autoPowerOnOffId(scenario.name));
+				if (dev[deviceAautoPowerOnOffId] == false) {
+					return;
+				}
+				var onEvent = false;
+				if (typeof value == 'boolean' && value == true) {
 					onEvent = true;
-				} else {
-					scenario.lightingControls.forEach(function(controls) {
-						if (controls.control == controlId) {
-							if (controls.value <= value) {
-								onEvent = true;
+				} else if (typeof value == 'number') {
+					if (scenario.lightingControls.length == 0) {
+						onEvent = true;
+					} else {
+						scenario.lightingControls.forEach(function(controls) {
+							if (controls.control == controlId) {
+								if (controls.value <= value) {
+									onEvent = true;
+								}
 							}
+						});
+					}
+				}
+				if (onEvent) {
+					if (!(scenarioId in dRActiveScenarios)) {
+						log.debug('DR {}: Start'.format(scenario.name));
+					}
+					var startTimer = Object.keys(dRActiveScenarios).length == 0;
+					dRActiveScenarios[scenarioId] = powerOffDelayScenario(scenarioId);
+					updateShutdownTimeoutTitle(scenarioId, scenario.name);
+					restoreBrightness(scenario);
+					if (startTimer || dRTimer === null) {
+					  if(dRTimer === null) {
+						dRTimer = setTimeout(updateCounter, 1000);
+					  }
+					}
+					var onLightingSource = scenario.lightingSources.indexOf(controlId) == -1;
+					if (onLightingSource && scenario.illuminance.sensor.length > 0) {
+						if (dev[scenario.illuminance.sensor] >= scenario.illuminance.value) {
+							onLightingSource = false;
 						}
-					});
-				}
-            }
-            if (onEvent) {
-				if (!(scenarioId in dRActiveScenarios)) {
-					log.debug('DR {}: Start'.format(scenario.name));
-				}
-                var startTimer = Object.keys(dRActiveScenarios).length == 0;
-                dRActiveScenarios[scenarioId] = powerOffDelayScenario(scenarioId);
-                updateShutdownTimeoutTitle(scenarioId, scenario.name);
-				restoreBrightness(scenario);
-                if (startTimer || dRTimer === null) {
-                  if(dRTimer === null) {
-                    dRTimer = setTimeout(updateCounter, 1000);
-                  }
-                }
-                var onLightingSource = scenario.lightingSources.indexOf(controlId) == -1;
-                if (onLightingSource && scenario.illuminance.sensor.length > 0) {
-                    if (dev[scenario.illuminance.sensor] >= scenario.illuminance.value) {
-                        onLightingSource = false;
-                    }
-                }
-                if (onLightingSource) {
-                    scenario.lightingSources.forEach(function(source) {
-                        setControlsValue(source, true, true);
-                    });
-                }
-            } else {
-				if (allLightingSourcesDisabled(scenario)) {
-					completingScenarios([scenarioId]);
+					}
+					if (onLightingSource) {
+						scenario.lightingSources.forEach(function(source) {
+							setControlsValue(source, true, true);
+						});
+					}
+				} else {
+					if (allLightingSourcesDisabled(scenario)) {
+						completingScenarios([scenarioId]);
+					}
 				}
 			}
-        }
+		});
     }
 }
 
