@@ -322,6 +322,7 @@ SunCalc.getMoonTimes = function (date, lat, lng, inUTC) {
 var deviceId = "astronomicalDayNightSensor";
 var lat = "";
 var lng = "";
+var height = 0;
 
 function setLatitudeLongitude(latitudeLongitude) {
   var words = String(latitudeLongitude).split(",");
@@ -369,7 +370,7 @@ function calcProperties() {
     return;
   }
   var toDay = new Date();
-  var timesSunriseSunset = getSunCalc().getTimes(toDay, lat, lng, 0);
+  var timesSunriseSunset = getSunCalc().getTimes(toDay, lat, lng, height);
   dev[deviceControlId("dayNight")] = (toDay >= timesSunriseSunset.sunrise && toDay <= timesSunriseSunset.sunset);
   var nextDay, nextNight;
   var setNextDay = false;
@@ -386,7 +387,7 @@ function calcProperties() {
   }
   if (setNextDay || setNextNight) {
 	var nextDate = new Date(toDay.getTime() + (24 * 60 * 60 * 1000));
-    var nextTimesSunriseSunset = getSunCalc().getTimes(nextDate, lat, lng, 0);
+    var nextTimesSunriseSunset = getSunCalc().getTimes(nextDate, lat, lng, height);
     if (setNextDay) {
       nextDay = nextTimesSunriseSunset.sunrise;
     }
