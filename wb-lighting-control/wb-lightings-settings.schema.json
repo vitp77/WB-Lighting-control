@@ -31,6 +31,15 @@
                 "disable_properties": true
             }
 		},
+		"otherSettings": {
+			"$ref": "#/definitions/otherSettings",
+			"propertyOrder": 30,
+            "options": {
+				"collapsed": true,
+                "disable_edit_json": true,
+				"disable_properties": true
+            }
+		},
         "controls": {
             "type": "object",
             "options": {
@@ -427,6 +436,42 @@
                     }
                 }
 			}
+		},
+		"otherSettings": {
+			"headerTemplate": "Other settings",
+			"type": "object",
+            "properties": {
+				"brightnessReductionLevel": {
+					"title": "Brightness reduction level",
+					"propertyOrder": 10,
+					"type": "number",
+					"default": 0.7
+				},
+				"renewalTimeout": {
+					"title": "Renewal timeout",
+					"propertyOrder": 20,
+					"type": "number",
+					"default": 5
+				},
+				"renewalsMultiplier": {
+					"title": "Renewals multiplier",
+					"propertyOrder": 30,
+					"type": "number",
+					"default": 2
+				},
+				"maximumRenewalsMultiplier": {
+					"title": "Maximum renewals multiplier",
+					"propertyOrder": 40,
+					"type": "number",
+					"default": 4
+				}
+			},
+			"required": [
+				"brightnessReductionLevel",
+				"renewalTimeout",
+				"renewalsMultiplier",
+				"maximumRenewalsMultiplier"
+			]
 		}
     },
     "translations": {
@@ -459,8 +504,12 @@
 			"Use astronomical sensor of day and night": "Использовать астрономический датчик",
 			"Latitude, longitude": "Широта, долгота",
 			"Copy the latitude and longitude of a point on Yandex maps": "Скопируйте широту и долготу точки на Яндекс картах",
-			"Enables the creation of a virtual device": "Включает создание виртуального устройства"
+			"Enables the creation of a virtual device": "Включает создание виртуального устройства",
+			"Other settings": "Прочие настройки",
+			"Brightness reduction level": "Коэффициент снижения яркости (перед завершением сценария)",
+			"Renewal timeout": "Тамаут в секундах ожидания возобновления сценария с увеличенным таймаутом",
+			"Renewals multiplier": "Множитель возобновленного таймаута сценария",
+			"Maximum renewals multiplier": "Максимальный можитель возобновленного таймаута сценария"
 		}
 	}
-
 }

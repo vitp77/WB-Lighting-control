@@ -253,9 +253,20 @@ def updateSettings():
         lightingConfig = {
             'astronomicalDayNightSensor': {'useAstronomicalDayNightSensor': False, 'latitudeLongitude': ''},
             'location': newLightingLocation(),
-            'controls': {}}
+            'controls': {},
+            'otherSettings': {
+                'brightnessReductionLevel': 0.7,
+                'renewalTimeout': 5,
+                'renewalsMultiplier': 2,
+                'maximumRenewalsMultiplier': 4}}
     if ('astronomicalDayNightSensor' not in lightingConfig):
         lightingConfig['astronomicalDayNightSensor'] = {'useAstronomicalDayNightSensor': False, 'latitudeLongitude': ''}
+    if ('otherSettings' not in lightingConfig):
+        lightingConfig['otherSettings'] = {
+            'brightnessReductionLevel': 0.7,
+            'renewalTimeout': 5,
+            'renewalsMultiplier': 2,
+            'maximumRenewalsMultiplier': 4}
     if (isCollectsControlsDifferent(lightingConfig['controls'], controls) or True):
         updatecollectControlsInLightingConfig(lightingConfig)
         needUpdates = True

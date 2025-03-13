@@ -344,7 +344,7 @@ function createVirtualDevice() {
 		  title: "День (...)",
 		  type: "switch",
 		  value: true,
-		  readonly: true,
+//		  readonly: true,
 		  order: 50
 		}
 	  }
