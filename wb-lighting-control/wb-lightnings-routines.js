@@ -17,7 +17,7 @@ defineVirtualDevice(deviceName, {
 
 // Общего назначения
 
-// Возращает словарь с ключами devName и cellName, заполненными из строки
+// Возвращает словарь с ключами devName и cellName, заполненными из строки
 // "<devName>/<cellName>"
 //
 function partsOfPathToControl(control) {
@@ -79,7 +79,7 @@ function setDevicesControlsValue(device, cellName, value, notify) {
   return false
 }
 
-// Возвращает число строкой в два занака, с лидирующим 0
+// Возвращает число строкой в два знака, с лидирующим 0
 // Используется для форматирования времени
 //
 function twoDigitNumberPresentation(value) {
@@ -113,12 +113,12 @@ function setSwitchControl(masterControl, value) {
     newValue = valueSlaveSwitchControls(masterControl);
   }
   setControlsValue(masterControl, newValue, false);
-  if (devicesProperties[masterControl].parrentControl.length > 0) {
-    setSwitchControl(devicesProperties[masterControl].parrentControl, newValue);
+  if (devicesProperties[masterControl].parentControl.length > 0) {
+    setSwitchControl(devicesProperties[masterControl].parentControl, newValue);
   }
 }
 
-// Устанавливает значение для всех подчичненных контролорв
+// Устанавливает значение для всех подчиненных контролов
 //
 function setSlaveSwitchMasterControl(masterControl) {
   var controls = devicesProperties[masterControl].slaveControls;
@@ -159,12 +159,12 @@ function setRangeControl(masterControl, value) {
     newValue = valueSlaveRangeControls(masterControl, newValue);
   }
   setControlsValue(masterControl, newValue, false);
-  if (devicesProperties[masterControl].parrentControl.length > 0) {
-    setRangeControl(devicesProperties[masterControl].parrentControl, newValue);
+  if (devicesProperties[masterControl].parentControl.length > 0) {
+    setRangeControl(devicesProperties[masterControl].parentControl, newValue);
   }
 }
 
-// Устанавливает значение яркости для всех подчичненных контролорв
+// Устанавливает значение яркости для всех подчиненных контролов
 //
 function setSlaveRangeMasterControl(masterControl) {
   var controls = devicesProperties[masterControl].slaveControls;
@@ -182,7 +182,7 @@ function setSlaveRangeMasterControl(masterControl) {
   });
 }
 
-// Создает правило для masterControl, включающего или отключающего подчиненные устройста
+// Создает правило для masterControl, включающего или отключающего подчиненные устройства
 //
 function createSwitchesRules(masterControl, kindControls) {
   defineRule("{} (dep)".format(masterControl), {
@@ -233,17 +233,17 @@ function createMasterSwitchRule(masterSwitchControl, deviceControlSwitchId) {
 }
 
 // Добавляет в словарь ключ masterControl, содержащем словарь с ключами:
-// - parrentControl - вышестоящий masterControl,
+// - parentControl - вышестоящий masterControl,
 // - slaveControls - подчиненные устройства
 //
 function setDeviceProperties(masterControl, slaveControls) {
   devicesProperties[masterControl] = {
-    'parrentControl': '',
+    'parentControl': '',
     'slaveControls': slaveControls
   };
   slaveControls.forEach(function (control) {
     if (control.length > 0 && control in devicesProperties) {
-      devicesProperties[control].parrentControl = masterControl;
+      devicesProperties[control].parentControl = masterControl;
     }
   });
 }
@@ -300,6 +300,23 @@ function illuminanceSensorIsActive(illuminanceSensorData) {
   return value >= illuminanceSensorData.value
 }
 
+function presenceSensorIsActive(scenario) {
+  if (!illuminanceSensorIsActive(scenario.illuminance)) {
+    var lightingControls = Object.keys(scenario.lightingControls);
+    for (idx = 0; idx < lightingControls.length; idx++) {
+      var newValue = dev[lightingControls[idx]];
+      if (typeof newValue == 'boolean' && newValue == true) {
+        return true;
+      } else if (typeof newValue == 'number') {
+        if (newValue >= scenario.lightingControls[lightingControls[idx]]) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 // Создает правило для датчиков движения, имеющих числовое значение
 // - Если текущее значение больше или равно заданному порогу - Истина (Движение есть)
 // - Если текущее значение меньше заданного порога - Ложь (Движения нет)
@@ -331,7 +348,7 @@ function createAutoPowerOffRule(controls, locationName) {
 }
 
 // Добавляет в коллекцию данных датчиков, по ключу sensor (Датчик)
-// массив идентификаторов сценариев в которых он учакствует
+// массив идентификаторов сценариев в которых он участвует
 //
 function pushScenarioIdToDRControls(sensor, scenarioId) {
   if (sensor in dRControls) {
@@ -342,14 +359,14 @@ function pushScenarioIdToDRControls(sensor, scenarioId) {
 }
 
 // Создание сценария автоматического управления освещением, где
-// - location - настрока места автоматизации из файла конфигурации
-// - locationName - человекочитаемое наименование локации
-// - devicelightingControl - устройство группового управления освещением
+// - location - настройка места автоматизации из файла конфигурации
+// - locationName - человеко-читаемое наименование локации
+// - deviceLightingControl - устройство группового управления освещением
 // - baseOrder - порядок мастер выключателя за которым добавляются:
 //   - Переключатель сценария (вкл/выкл)
 //   - Индикатор таймера
 //
-function createAutoPowerOffScenario(location, locationName, devicelightingControl, baseOrder) {
+function createAutoPowerOffScenario(location, locationName, deviceLightingControl, baseOrder) {
   if ('autoPowerOff' in location && location.autoPowerOff == true) {
     var scenarioId = Object.keys(dRScenarios).length;
     var scenario = {
@@ -400,7 +417,7 @@ function createAutoPowerOffScenario(location, locationName, devicelightingContro
       });
     }
     var controlSwitchId = autoPowerOnOffId(locationName);
-    devicelightingControl.addControl(
+    deviceLightingControl.addControl(
       controlSwitchId, {
       title: 'Автоматически вкл./откл. свет ({})'.format(locationName),
       type: 'switch',
@@ -409,7 +426,7 @@ function createAutoPowerOffScenario(location, locationName, devicelightingContro
       order: baseOrder + 4
     });
     var controlRangeId = shutdownTimeoutId(locationName);
-    devicelightingControl.addControl(
+    deviceLightingControl.addControl(
       controlRangeId, {
       title: 'Таймаут отключения',
       type: 'range',
@@ -422,6 +439,10 @@ function createAutoPowerOffScenario(location, locationName, devicelightingContro
     updateShutdownTimeoutTitle(scenario);
     createAutoPowerOffRule(controls, locationName);
     dRScenarios[scenarioId] = scenario;
+    // Запускается сценарий, если хотя бы один источником света включен
+    if (!allLightingSourcesDisabled(scenario)) {
+      startScenario(scenario, false);
+    }
   }
 }
 
@@ -473,7 +494,7 @@ function isOnlyIlluminanceScenario(scenario) {
     Object.keys(scenario.lightingControls).length == 0;
 }
 
-// Обновляет счетчик обратного остчета для сценариев управляемых только датчикрм рсвещенности
+// Обновляет счетчик обратного отсчета для сценариев управляемых только датчиком освещенности
 //
 function updateCounterOnlyIlluminanceScenario(scenario) {
   if (illuminanceSensorIsActive(scenario.illuminance)) {
@@ -486,16 +507,19 @@ function updateCounterOnlyIlluminanceScenario(scenario) {
   return false;
 }
 
-// Обновляет счетчик обратного остчета для сценариев датчиками движения
+// Обновляет счетчик обратного отсчета для сценариев датчиками движения
 //
 function updateCounterOtherScenario(scenario) {
+  if (presenceSensorIsActive(scenario)) {
+    return;
+  }
   dRActiveScenarios[scenario.id] -= 1;
   updateShutdownTimeoutTitle(scenario);
   if (dRActiveScenarios[scenario.id] == 0) {
     return true;
   }
   if (dRActiveScenarios[scenario.id] == renewalTimeout) {
-    dRStoppedScenarios[scenario.id] = doublerenewalTimeout;
+    dRStoppedScenarios[scenario.id] = doubleRenewalTimeout;
     Object.keys(scenario.brightness).forEach(function (brightnessSource) {
       if (typeof dev[brightnessSource] == 'number' && dev[scenario.brightness[brightnessSource]] == true) {
         var currentBrightness = dev[brightnessSource];
@@ -541,7 +565,7 @@ function updateCounter() {
   }
 }
 
-// Завершет сценарии ожидания повторного включения света
+// Завершает сценарии ожидания повторного включения света
 //
 function completingStoppedScenarios(stoppedScenarios) {
   stoppedScenarios.forEach(function (scenarioId) {
@@ -570,7 +594,7 @@ function completingScenarios(scenarios) {
   });
 }
 
-// Восстанавливает яркость, для источников света с диммированием, после предупреждающего затемнения
+// Восстанавливает яркость, для источников света с димированием, после предупреждающего затемнения
 //
 function restoreBrightness(scenario) {
   Object.keys(scenario.brightnessValues).forEach(function (brightnessSource) {
@@ -599,7 +623,7 @@ function autoPowerOnOffId(scenarioName) {
   return 'autoPowerOnOff ({})'.format(scenarioName);
 }
 
-// Кинструктуор имени контрорла индикатора таймера
+// Конструктор имени контрола индикатора таймера
 //
 function shutdownTimeoutId(scenarioName) {
   return 'shutdownTimeout ({})'.format(scenarioName);
@@ -645,24 +669,7 @@ function updateDRScenario(controlId, value) {
         }
         if (isEventOn) {
           // Старт сценария или его возобновление
-          if (!(scenarioId in dRActiveScenarios)) {
-            log.debug('DR {}: Start'.format(scenario.name));
-          }
-          var startTimer = Object.keys(dRActiveScenarios).length == 0;
-          dRActiveScenarios[scenarioId] = powerOffDelayScenario(scenarioId);
-          updateShutdownTimeoutTitle(scenario);
-          restoreBrightness(scenario);
-          if (startTimer || dRTimer === null) {
-            if (dRTimer === null) {
-              dRTimer = setTimeout(updateCounter, 1000);
-            }
-          }
-          // Если обновляется по событию сенсора, то включаются все источники сценария
-          if (isSensor) {
-            scenario.lightingSources.forEach(function (source) {
-              setControlsValue(source, true, true);
-            });
-          }
+          startScenario(scenario, isSensor);
         } else {
           // Завершение сценария
           if (allLightingSourcesDisabled(scenario)) {
@@ -670,6 +677,27 @@ function updateDRScenario(controlId, value) {
           }
         }
       }
+    });
+  }
+}
+
+function startScenario(scenario, isSensor) {
+  if (!(scenario.id in dRActiveScenarios)) {
+    log.debug('DR {}: Start'.format(scenario.name));
+  }
+  var startTimer = Object.keys(dRActiveScenarios).length == 0;
+  dRActiveScenarios[scenario.id] = powerOffDelayScenario(scenario.id);
+  updateShutdownTimeoutTitle(scenario);
+  restoreBrightness(scenario);
+  if (startTimer || dRTimer === null) {
+    if (dRTimer === null) {
+      dRTimer = setTimeout(updateCounter, 1000);
+    }
+  }
+  // Если обновляется по событию сенсора, то включаются все источники сценария
+  if (isSensor) {
+    scenario.lightingSources.forEach(function (source) {
+      setControlsValue(source, true, true);
     });
   }
 }
@@ -723,7 +751,7 @@ function slaveControlsLocation(location) {
   return slaveControls;
 }
 
-// Конструктуор человеко читаемого заголовка локации / сценария автоматического управления освещением
+// Конструктор человеко читаемого заголовка локации / сценария автоматического управления освещением
 //
 function nameLocation(location) {
   var locationName = location.name;
@@ -739,7 +767,7 @@ function createMasterControls(location) {
   order += 10;
   var orderSwitch = order;
   var currentControls = newLocationsControls();
-  var devicelightingControl = getDevice(deviceName);
+  var deviceLightingControl = getDevice(deviceName);
   var locationName = nameLocation(location);
   var masterSwitchUse = 'masterSetting' in location && 'masterSwitchUse' in location.masterSetting && location.masterSetting.masterSwitchUse == true;
   var controlSwitchId = 'switch {}'.format(location.name);
@@ -753,7 +781,7 @@ function createMasterControls(location) {
     } else {
       // Виртуального мастер-выключателя
       deviceControlSwitchId = deviceCellFullName(controlSwitchId);
-      devicelightingControl.addControl(
+      deviceLightingControl.addControl(
         controlSwitchId, {
         title: locationName,
         type: 'switch',
@@ -765,11 +793,11 @@ function createMasterControls(location) {
     }
   }
 
-  // Сбор сведений о зависимых котнтролах с созданием контролов подчиненных локаций
+  // Сбор сведений о зависимых контролах с созданием контролов подчиненных локаций
   var slaveControls = slaveControlsLocation(location);
 
   // Сценарий темная комната (серая если еще датчик света)
-  createAutoPowerOffScenario(location, locationName, devicelightingControl, orderSwitch);
+  createAutoPowerOffScenario(location, locationName, deviceLightingControl, orderSwitch);
 
   // Если мастер выключателя нет возврат коллекции подчиненных контролов
   if (!masterSwitchUse) {
@@ -785,7 +813,7 @@ function createMasterControls(location) {
     var controlRangeId = 'range {}'.format(location.name);
     var deviceControlRangeId = deviceCellFullName(controlRangeId);
     orderRange = orderSwitch + 2;
-    devicelightingControl.addControl(
+    deviceLightingControl.addControl(
       controlRangeId, {
       title: 'Уровень',
       type: 'range',
@@ -848,7 +876,7 @@ var brightnessReductionLevel,
   renewalTimeout,
   renewalsMultiplier,
   maximumRenewalsMultiplier,
-  doublerenewalTimeout;
+  doubleRenewalTimeout;
 
 // Чтение файла конфигурации и применение настроек
 function applyConfiguration() {
@@ -874,10 +902,10 @@ function applyConfiguration() {
   renewalTimeout = configLighting.otherSettings.renewalTimeout;
   renewalsMultiplier = configLighting.otherSettings.renewalsMultiplier;
   maximumRenewalsMultiplier = configLighting.otherSettings.maximumRenewalsMultiplier;
-  doublerenewalTimeout = renewalTimeout * 2;
+  doubleRenewalTimeout = renewalTimeout * 2;
   createMasterControls(configLighting.location);
 }
 
-// Задерка перед применением конфигурации и обновлением настроек
+// Задержка перед применением конфигурации и обновлением настроек
 setTimeout(applyConfiguration, 10000);
 setTimeout(updateSettings, 20000);
