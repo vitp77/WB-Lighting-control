@@ -440,7 +440,7 @@ function createAutoPowerOffScenario(location, locationName, deviceLightingContro
     createAutoPowerOffRule(controls, locationName);
     dRScenarios[scenarioId] = scenario;
     // Запускается сценарий, если хотя бы один источником света включен
-    if (!allLightingSourcesDisabled(scenario)) {
+    if (dev[cellFullName(deviceName, controlSwitchId)] && !allLightingSourcesDisabled(scenario)) {
       startScenario(scenario, false);
     }
   }

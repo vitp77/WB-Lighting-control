@@ -5,7 +5,7 @@ import json
 import os
 import time
 
-from paho.mqtt import client as mqtt
+from paho.mqtt import client as mqtt # type: ignore
 from pprint import pprint
 
 lightingsConfigFile = '/mnt/data/etc/wb-lightings-settings.conf'
@@ -76,7 +76,7 @@ def mqtt_on_message(client, userdata, msg):
             if ('freq' not in controlId):
                 devProperties = json.loads(msg.payload.decode("utf-8"))
                 if (controlId.find('K') == 0 or controlId.find('Channel') == 0 or controlId.find('Input') == 0 or 'Motion' in controlId or controlId.find('Illuminance') == 0):
-                    channelId = channelIdtentificator(deviceId, controlId)
+                    channelId = channelFullName(deviceId, controlId)
                     if (devProperties['type'] == 'switch'):
                         if devProperties['readonly'] == True:
                             controls['channelsControls'].append(channelId)
@@ -91,18 +91,18 @@ def mqtt_on_message(client, userdata, msg):
                         if devProperties['readonly'] == False:
                             controls['brightnessControls'][lightSourceByRangeControlId(controlId, deviceId)] = channelId
 
-def channelIdtentificator(deviceId, controlId):
+def channelFullName(deviceId, controlId):
     return deviceId + '/' + controlId
 
 def lightSourceByRangeControlId(controlId, deviceId):
     if (controlId == 'Channel 1'):
-        return channelIdtentificator(deviceId, 'K1')
+        return channelFullName(deviceId, 'K1')
     elif (controlId == 'Channel 2'):
-        return channelIdtentificator(deviceId, 'K2')
+        return channelFullName(deviceId, 'K2')
     elif (controlId == 'Channel 3'):
-        return channelIdtentificator(deviceId, 'K3')
+        return channelFullName(deviceId, 'K3')
     elif (controlId == 'Channel 4'):
-        return channelIdtentificator(deviceId, 'K4')
+        return channelFullName(deviceId, 'K4')
     return deviceId
         
 def isDictionariesDifferent(dictionaries1, dictionaries2):
@@ -139,7 +139,7 @@ def isCollectsControlsDifferent(controls1, controls2):
         or isDictionariesDifferent(controls1['channelsControls'], controls2['channelsControls'])
         or isDictionariesDifferent(controls1['illuminanceSensors'], controls2['illuminanceSensors']))
     
-def updatecollectControlsInLightingConfig(lightingConfig):
+def updateCollectionControlsInLightingConfig(lightingConfig):
     lightingConfig['controls']['channelsSources'] = controls['channelsSources']
     lightingConfig['controls']['channelsControls'] = controls['channelsControls']
     lightingConfig['controls']['illuminanceSensors'] = controls['illuminanceSensors']
@@ -149,7 +149,7 @@ def updatesChannels():
     lightingConfig = load_json(lightingsConfigFile)
     collectControls(lightingConfig['astronomicalDayNightSensor']['useAstronomicalDayNightSensor'])
     if (isCollectsControlsDifferent(lightingConfig['controls'], controls)):
-        updatecollectControlsInLightingConfig(lightingConfig)
+        updateCollectionControlsInLightingConfig(lightingConfig)
         save_json(lightingsConfigFile, lightingConfig)
         print('Обновлена коллекция каналов', file=sys.stderr)
     else:
@@ -268,7 +268,7 @@ def updateSettings():
             'renewalsMultiplier': 2,
             'maximumRenewalsMultiplier': 4}
     if (isCollectsControlsDifferent(lightingConfig['controls'], controls) or True):
-        updatecollectControlsInLightingConfig(lightingConfig)
+        updateCollectionControlsInLightingConfig(lightingConfig)
         needUpdates = True
         
     locationsConfig = load_json(locationsConfigFile)
