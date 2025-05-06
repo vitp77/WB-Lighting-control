@@ -71,11 +71,11 @@ def mqtt_on_message(client, userdata, msg):
     topicParts = msg.topic.split('/')
     if (topicParts[1] == 'devices' and topicParts[3] == 'controls'):
         deviceId = topicParts[2]
-        if ('wb-mdm' in deviceId or 'wb-mr' in deviceId or 'wb-msw' in deviceId):
+        if ('wb-mdm' in deviceId or 'wb-mr' in deviceId or 'wb-msw' in deviceId or '0x00124b0027252471' in deviceId):
             controlId = topicParts[4]
             if ('freq' not in controlId):
                 devProperties = json.loads(msg.payload.decode("utf-8"))
-                if (controlId.find('K') == 0 or controlId.find('Channel') == 0 or controlId.find('Input') == 0 or 'Motion' in controlId or controlId.find('Illuminance') == 0):
+                if (controlId.find('K') == 0 or controlId.find('Channel') == 0 or controlId.find('Input') == 0 or 'Motion' in controlId or controlId.find('Illuminance') == 0 or 'counter' in controlId):
                     channelId = channelFullName(deviceId, controlId)
                     if (devProperties['type'] == 'switch'):
                         if devProperties['readonly'] == True:
@@ -286,7 +286,10 @@ def newUpdateSummary():
         'useRangeControls': False,
         'updateWidgets': False}
 
-def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUiWidgets, isRoot):
+def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUiWidgets, isRoot, parentName):
+    locationFullName = location['name']
+    if (len(parentName) > 0):
+        locationFullName = parentName + '-' + locationFullName
     updateSummary = newUpdateSummary()
     widgetPosition = len(allLightDashboardWidgets)
     createWidget = isRoot
@@ -323,7 +326,7 @@ def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUi
     if ('locations' in location):
         controlsLocations = []
         for subLocation in location['locations']:
-            updateSubLocationSummary = updateLocationWidgets(subLocation, allLightDashboardWidgets, webUiConfig, webUiWidgets, False)
+            updateSubLocationSummary = updateLocationWidgets(subLocation, allLightDashboardWidgets, webUiConfig, webUiWidgets, False, locationFullName)
             controlsLocations.extend(updateSubLocationSummary['controls'])
             if (updateSubLocationSummary['useRangeControls'] == True):
                 updateSummary['useRangeControls'] = True
@@ -341,7 +344,7 @@ def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUi
         lightingGroupControlName = 'Весь свет'
         if (not createWidget):
             lightingGroupControlName = location['name']
-        idSwitch = 'lightingGroupControl/switch ' + location['name']
+        idSwitch = 'lightingGroupControl/switch ' + locationFullName
         if (('masterSwitchControl' in location['masterSetting'])
             and (len(location['masterSetting']['masterSwitchControl']) > 0)
             and (location['masterSetting']['masterSwitchControl'].find('counter') == -1)):
@@ -357,7 +360,7 @@ def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUi
         if (updateSummary['useRangeControls']):
             updateSummary['controls'].insert(1,
                 {
-                    'id': 'lightingGroupControl/range ' + location['name'],
+                    'id': 'lightingGroupControl/range ' + locationFullName,
                     'name': ' ',
                     'extra': {},
                     'type': 'range'
@@ -367,14 +370,14 @@ def updateLocationWidgets(location, allLightDashboardWidgets, webUiConfig, webUi
             createWidget = True
         updateSummary['controls'].append(
             {
-                'id': 'lightingGroupControl/autoPowerOnOff (' + location['name'] + ')',
+                'id': 'lightingGroupControl/autoPowerOnOff (' + locationFullName + ')',
                 'name': 'Автоматически вкл./откл. свет',
                 'extra': {},
                 'type': 'switch'
             })
         updateSummary['controls'].append(
             {
-                'id': 'lightingGroupControl/shutdownTimeout (' + location['name'] + ')',
+                'id': 'lightingGroupControl/shutdownTimeout (' + locationFullName + ')',
                 'name': '',
                 'extra': {},
                 'type': 'range'
@@ -428,7 +431,7 @@ def updateWidgets():
         print('Не найдены настройки освещения', file=sys.stderr)
         return
     saveConfig = False
-    updateSummary = updateLocationWidgets(lightingConfig['location'], allLightDashboardWidgets, webUiConfig, webUiWidgets, True)
+    updateSummary = updateLocationWidgets(lightingConfig['location'], allLightDashboardWidgets, webUiConfig, webUiWidgets, True, '')
     if (updateSummary['updateWidgets']):
         saveConfig = True
         print('Обновление виджетов', file=sys.stderr)
@@ -440,8 +443,9 @@ def updateWidgets():
         saveConfig = True
         print('Обновление коллекции виджетов панели освещения', file=sys.stderr)
     if (saveConfig):
+        save_json(webUiConfigFile + '.tmp', webUiConfig)
         os.rename(webUiConfigFile, webUiConfigFile + '.' + time.strftime("%Y%m%d_%H%M%S"))
-        save_json(webUiConfigFile, webUiConfig)
+        os.rename(webUiConfigFile + '.tmp', webUiConfigFile)
         print('Обновлена панель освещения', file=sys.stderr)
     else:
         print('Обновление панели освещения не требуется', file=sys.stderr)
