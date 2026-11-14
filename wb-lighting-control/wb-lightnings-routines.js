@@ -354,15 +354,21 @@ function illuminanceSensorIsActive(illuminanceSensorData) {
 }
 
 function presenceSensorIsActive(scenario) {
-  if (!illuminanceSensorIsActive(scenario.illuminance)) {
-    var lightingControls = Object.keys(scenario.lightingControls);
-    for (idx = 0; idx < lightingControls.length; idx++) {
-      var newValue = dev[lightingControls[idx]];
-      if (typeof newValue == 'boolean' && newValue == true) {
-        return true;
-      } else if (typeof newValue == 'number') {
-        if (newValue >= scenario.lightingControls[lightingControls[idx]]) {
+  var lightingControls = Object.keys(scenario.lightingControls);
+  if (lightingControls.length == 0) {
+    // Если нет датчиков включения, ориентируемся по наличию датчика освещенности
+    // Ранее возвращалось return true
+    return scenario.illuminance.sensor.length != 0
+  } else {
+    if (!illuminanceSensorIsActive(scenario.illuminance)) {
+      for (idx = 0; idx < lightingControls.length; idx++) {
+        var newValue = dev[lightingControls[idx]];
+        if (typeof newValue == 'boolean' && newValue == true) {
           return true;
+        } else if (typeof newValue == 'number') {
+          if (newValue >= scenario.lightingControls[lightingControls[idx]]) {
+            return true;
+          }
         }
       }
     }
@@ -396,6 +402,7 @@ function createPresenceSensorsAutoPowerOffRule() {
           dRControls[controlId].forEach(function (scenarioId) {
             var scenario = dRScenarios[scenarioId];
             if (newValue >= scenario.lightingControls[cellFullName(devName, cellName)]) {
+              log.debug('presenceSensorsAutoPowerOffRule: {} = {}', controlId, newValue);
               updateDRScenario(controlId, newValue);
             }
           });
@@ -575,7 +582,7 @@ function updateCounterOnlyIlluminanceScenario(scenario) {
   return false;
 }
 
-// Обновляет счетчик обратного отсчета для сценариев датчиками движения
+// Обновляет счетчик обратного отсчета для сценариев с датчиками движения
 //
 function updateCounterOtherScenario(scenario) {
   if (presenceSensorIsActive(scenario)) {
@@ -718,7 +725,9 @@ function updateDRScenario(controlId, value) {
             updateShutdownTimeoutTitle(scenario);
             return;
           }
-          isEventOn = true;
+          if (presenceSensorIsActive(scenario)) {
+            isEventOn = true;
+          }
         } else {
           if (!isSensor || !illuminanceSensorIsActive(scenario.illuminance)) {
             if (typeof value == 'boolean' && value == true) {
@@ -1048,3 +1057,4 @@ trackMqtt("/rpc/v1/wb-mqtt-serial/config/Load", function (message) {
     }
   }
 });
+
